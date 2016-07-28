@@ -1,0 +1,19 @@
+<launch>
+  <include file="$(find turtlebot_bringup)/launch/includes/robot.launch.xml">
+    <arg name="base" value="roomba" />
+    <arg name="stacks" value="circles" />
+    <arg name="3d_sensor" value="kinect" />
+  </include>
+  <include file="$(find turtlebot_bringup)/launch/includes/mobile_base.launch.xml">
+    <arg name="base" value="roomba" />
+    <arg name="serialport" value="/dev/ttyUSB0" />
+  </include>
+
+  <include file="$(find corobot_bringup)/map.launch"/>
+  
+  <include file="$(find freenect_launch)/launch/examples/freenect-xyz.launch"/>
+
+  <node pkg="depthimage_to_laserscan" type="depthimage_to_laserscan" name="laserscan">
+    <remap from="/image" to="/camera/depth/image_raw" />
+  </node>
+</launch>

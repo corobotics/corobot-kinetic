@@ -1,0 +1,6 @@
+<launch>
+<node pkg="corobot_qrcode" type="detect" name="left">
+    <param name="device" value="/dev/videoleft" />
+    <param name="csvfile" value="$(find corobot_qrcode)/barcodePoints.csv" />
+  </node>
+</launch>
