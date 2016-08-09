@@ -5,7 +5,7 @@ Will this help?
 
 * Install Ubuntu 16.04 (including latest updates)
 
-* Install `ros-kinetic-desktop` per wiki.ros/Install 
+* Install `ros-kinetic-desktop` per wiki.ros.org/Installation 
 
 * Install other ROS packages: 
 
@@ -39,24 +39,25 @@ Will this help?
 			cd opencv
 			sudo mkdir build
 			cd build
-			sudo cmake -DOPENCV_EXTRA_MODULES_PATH=../opencv-contrib/modules  ..
+			sudo cmake -DOPENCV_EXTRA_MODULES_PATH=../../opencv-contrib/modules  ..
 			sudo make -j5
 			sudo make install
 
 * Install udev rules for create, cameras - in /etc/udev/rules.d
+
 	* Start with neither webcam plugged in, then plug the left one in.  Should be at /dev/video1
 	* Run `udevadm info -q all /dev/video1 | grep SERIAL`
 	* There should be an 8-digit hex number there (part or all of the serial number)
-	* Put the serial number into the following line (replacing `serial`) :	`KERNEL=="video*", ATTRS{serial}=="serial", SYMLINK+="videoleft" MODE="0666"`
+	* Put the serial number into the following line (replacing `xxxx`) :	`KERNEL=="video*", ATTRS{serial}=="xxxx", SYMLINK+="videoleft" MODE="0666"`
 	This goes in the file /etc/udev/rules.d/10-video.rules
 	* Repeat for the right camera
 	* /etc/udev/rules.d/52-corobot.rules: contents are `SUBSYSTEMS=="usb", ATTRS{idProduct}=="2303", ATTRS{idVendor}=="067b", MODE="666", GROUP="corobot"`
-
+	
 
 * Install corobot software:
 
-		cd ~/corobot_ws/src
-		git clone https://github.com/corobotics/corobot-kinetic.git
-		cd ..
+		mkdir ~/corobot_ws
+		cd ~/corobot_ws
+		git clone https://github.com/corobotics/corobot-kinetic.git src
 		catkin_make
 		echo "source ~/corobot_ws/devel/setup.bash" >> ~/.bashrc
