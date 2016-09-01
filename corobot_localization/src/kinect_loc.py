@@ -363,7 +363,7 @@ def main():
     # apparently this affects all subscribers to scan(?) but should be OK (?)
     rospy.Subscriber("scan", LaserScan, laser_callback, queue_size=1) 
     rospy.Subscriber("pose", Pose, pose_callback)
-    posepub = rospy.Publisher("laser_pose", Pose)
+    posepub = rospy.Publisher("laser_pose", Pose,queue_size=1)
     rospy.spin()
 
 if __name__ == "__main__":

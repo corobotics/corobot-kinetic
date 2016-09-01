@@ -34,9 +34,9 @@ class CorobotNavigator():
     def ros_init(self):
         rospy.init_node('corobot_navigator')
         #Publisher to obstacle_avoidance
-        self.point_pub = rospy.Publisher('waypoints', Point)
-        self.goals_reached_pub = rospy.Publisher('goals_reached', Point)
-        self.goals_failed_pub = rospy.Publisher('goals_failed', Point)
+        self.point_pub = rospy.Publisher('waypoints', Point, queue_size=10)
+        self.goals_reached_pub = rospy.Publisher('goals_reached', Point, queue_size=10)
+        self.goals_failed_pub = rospy.Publisher('goals_failed', Point,queue_size=10)
         rospy.Subscriber('goals_nav', Point, self.goals_nav_callback)
         rospy.Subscriber('goals', Point, self.goals_callback)
         rospy.Subscriber('pose', Pose, self.pose_callback)
