@@ -14,6 +14,9 @@ using nav_msgs::Odometry;
 using corobot_common::Pose;
 using corobot_common::PoseArray;
 
+ros::Publisher particlePublisher;
+ParticleFilter* particleFilter = NULL;
+
 void odomCallback(Odometry odom);
 
 int main(int argc, char **argv)
@@ -58,7 +61,7 @@ int main(int argc, char **argv)
 
    ros::Subscriber sub = n.subscribe("odom", 100, odomCallback);
    
-   ros::Publisher particlePublisher = n.advertise<corobot_common::PoseArray>("particleList", 1);;
+   particlePublisher = n.advertise<corobot_common::PoseArray>("particleList", 1);;
 
    
    ros::service::waitForService("get_map");
@@ -71,21 +74,9 @@ int main(int argc, char **argv)
 //      ROS_INFO("coMap.response.map.info.height %d!\n", coMap.response.map.info.height);
 //      ROS_INFO("coMap.response.map.info.width %d!\n", coMap.response.map.info.width);
 
-      ParticleFilter* particleFilter = new ParticleFilter(coMap.response.map);
+      particleFilter = new ParticleFilter(coMap.response.map);
       
       particleFilter->initialize(10);
-      
-      ParticleFilter::ParticleList results = particleFilter->getParticleList();
-
-      ROS_INFO("PFLocalizationNode::%s results.size = %lu\n", __func__, results.size());   
-
-      PoseArray particles; 
-      
-      for (ParticleFilter::ParticleList::iterator it=results.begin(); it != results.end(); ++it)
-      {
-         particles.poses.push_back((it->pose));
-      }
-      particlePublisher.publish(particles);
 
    }
    else
@@ -103,5 +94,16 @@ void odomCallback(Odometry odom)
    double z_m = 0;
    ROS_INFO("odomCallback called x = %f, y = %f\n", x_m, y_m);
    
+         ParticleFilter::ParticleList results = particleFilter->getParticleList();
+
+      ROS_INFO("PFLocalizationNode::%s results.size = %lu\n", __func__, results.size());   
+
+      PoseArray particles; 
+      
+      for (ParticleFilter::ParticleList::iterator it=results.begin(); it != results.end(); ++it)
+      {
+         particles.poses.push_back((it->pose));
+      }
+      particlePublisher.publish(particles);
    
 }
