@@ -8,6 +8,7 @@ find_package(catkin REQUIRED COMPONENTS
   corobot_common
   geometry_msgs
   nav_msgs
+  roscpp
   rospy
 )
 
@@ -103,7 +104,7 @@ find_package(catkin REQUIRED COMPONENTS
 catkin_package(
 #  INCLUDE_DIRS include
 #  LIBRARIES corobot_localization
-#  CATKIN_DEPENDS corobot_common geometry_msgs nav_msgs rospy
+  CATKIN_DEPENDS corobot_common geometry_msgs nav_msgs rospy
 #  DEPENDS system_lib
 )
 
@@ -130,6 +131,7 @@ include_directories(
 
 ## Declare a C++ executable
 # add_executable(corobot_localization_node src/corobot_localization_node.cpp)
+add_executable(corobot_localization_node src/PFLocalizationNode.cpp src/ParticleFilter.cpp)
 
 ## Add cmake target dependencies of the executable
 ## same as for the library above
@@ -139,6 +141,9 @@ include_directories(
 # target_link_libraries(corobot_localization_node
 #   ${catkin_LIBRARIES}
 # )
+target_link_libraries(corobot_localization_node
+   ${catkin_LIBRARIES}
+ )
 
 #############
 ## Install ##
