@@ -102,6 +102,7 @@ void odomCallback(Odometry odom)
       
       for (ParticleFilter::ParticleList::iterator it=results.begin(); it != results.end(); ++it)
       {
+         ROS_INFO("PFLocalizationNode::%s it->pose x = %f, y = %f\n", __func__, it->pose.x, it->pose.y);
          particles.poses.push_back((it->pose));
       }
       particlePublisher.publish(particles);
