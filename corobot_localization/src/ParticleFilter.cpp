@@ -52,6 +52,8 @@ bool ParticleFilter::initialize(int numParticles)
    
    mParticles.clear();
    
+   ROS_INFO("ParticleFilter::ParticleFilter mMap.info.resolution %f\n", mMap.info.resolution);
+   
    for(uint32_t y = 0; y < mMap.info.height; ++y)
    {
       for(uint32_t x = 0; x < mMap.info.width; ++x)
@@ -61,8 +63,9 @@ bool ParticleFilter::initialize(int numParticles)
          {
             if((mNumOpenSpaces % spacesPerParticle) == 0)
             {
-               particle.pose.x = x;
-               particle.pose.y = y;
+               // Store the particles in meters not pixels.
+               particle.pose.x = x * mMap.info.resolution;
+               particle.pose.y = y * mMap.info.resolution;
                
                // make the orientation random.
                particle.pose.theta = ((index % 360) * M_PI/180);
