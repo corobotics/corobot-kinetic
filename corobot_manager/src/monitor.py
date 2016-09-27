@@ -103,7 +103,7 @@ class CorobotMonitor():
         self.win.setRecoveryMsg(recovery_msg.name)	
     
     def laserDisp_callback(self, laserDat):
-	self.win.setLaserData(laserDat)
+        self.win.setLaserData(laserDat)
         self.win.after(0,self.win.drawLaserMap)
 
     def wallDisp_callback(self, wallDat):
@@ -136,7 +136,8 @@ class CorobotMonitor():
             print out.split('\n')[0].split(', ')[1]
 
     def particles_callback(self, particles_message):
-        rospy.loginfo("monitor::particles_callback got a message!!")
+        self.win.setParticles(particles_message)
+        self.win.after(0,self.win.drawParticles)
 
     def init_ros_node(self):
         """Initialize all ROS node/sub/pub/srv stuff."""
