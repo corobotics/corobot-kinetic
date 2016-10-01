@@ -1,12 +1,22 @@
-#include "opencv2/video/tracking.hpp"
-#include "opencv2/highgui/highgui.hpp"
-#include "opencv2/calib3d/calib3d.hpp"
+#include <ros/ros.h>
+#include <cv_bridge/cv_bridge.h>
+#include <sensor_msgs/Image.h>
+#include <sensor_msgs/image_encodings.h>
+#include <opencv2/video/tracking.hpp>
+#include <opencv2/highgui/highgui.hpp>
+#include <opencv2/calib3d/calib3d.hpp>
+
+#include <message_filters/subscriber.h>
+#include <message_filters/synchronizer.h>
 
 #include <iostream>
 #include <fstream>
 
+#include <message_filters/sync_policies/approximate_time.h>
+
 using namespace cv;
 using namespace std;
+using namespace message_filters;
 
 #define MAX_FRAME 10
 
@@ -14,12 +24,118 @@ using namespace std;
 #define MAX_Z 1200
 
 
+// Counter for filenames.
+unsigned int cnt = 1;
+
+
+
+// Handler / callback
+void callback( const sensor_msgs::ImageConstPtr& msg_rgb , const sensor_msgs::ImageConstPtr& msg_depth )
+{
+	cv_bridge::CvImagePtr img_ptr_rgb;
+    cv_bridge::CvImagePtr img_ptr_depth;
+   	try
+	{
+        	img_ptr_depth = cv_bridge::toCvCopy(*msg_depth, sensor_msgs::image_encodings::TYPE_16UC1);
+    }
+    catch (cv_bridge::Exception& e)
+    {
+        ROS_ERROR("cv_bridge exception:  %s", e.what());
+        return;
+    }
+    
+	try
+	{
+        img_ptr_rgb = cv_bridge::toCvCopy(*msg_rgb, sensor_msgs::image_encodings::TYPE_8UC3);
+    }
+    catch (cv_bridge::Exception& e)
+    {
+        ROS_ERROR("cv_bridge exception:  %s", e.what());
+        return;
+    }
+
+    cv::Mat& mat_depth = img_ptr_depth->image;
+    cv::Mat& mat_rgb = img_ptr_rgb->image;
+
+    char file_rgb[100];
+    char file_depth[100];
+
+    sprintf( file_rgb, "%04d_rgb.png", cnt );
+    sprintf( file_depth, "%04d_depth.png", cnt );
+
+    vector<int> png_parameters;
+    png_parameters.push_back( CV_IMWRITE_PNG_COMPRESSION );
+    
+	/* We save with no compression for faster processing.*/
+    png_parameters.push_back( 9 ); 
+
+    cv::imwrite( file_rgb , mat_rgb, png_parameters );
+    cv::imwrite( file_depth, mat_depth, png_parameters );
+
+    ROS_INFO_STREAM(cnt << "\n");
+    ROS_INFO_STREAM("Images saved\n");
+
+    cnt++;
+}
+
+int main(int argc, char** argv)
+{
+    // Initialize the ROS system and become a node.
+  	ros::init(argc, argv, "guardar_imagenes");
+  	ros::NodeHandle nh;
+
+
+    message_filters::Subscriber<sensor_msgs::Image> subscriber_depth( nh , "/camera/depth_registered/hw_registered/image_rect_raw" , 1 );
+    message_filters::Subscriber<sensor_msgs::Image> subscriber_rgb( nh , "/camera/rgb/image_rect_color" , 1 );
+
+
+    typedef sync_policies::ApproximateTime<sensor_msgs::Image, sensor_msgs::Image> MySyncPolicy;
+
+  	// ExactTime or ApproximateTime take a queue size as its constructor argument, hence MySyncPolicy(10)
+  	Synchronizer<MySyncPolicy> sync(MySyncPolicy(10), subscriber_rgb, subscriber_depth );
+  	sync.registerCallback(boost::bind(&callback, _1, _2));
+
+
+    while(ros::ok())
+    {
+        char c;
+
+        ROS_INFO_STREAM("Enter 'a' to save a pair of images or 'b' to automatically save 300 images\n");
+        cin.get(c);
+        cin.ignore();
+        c = tolower(c);
+        ROS_INFO_STREAM("You entered " << c << "\n");
+
+        if( c == 'a' )
+        {
+        	/* We give control to the callback function.*/
+            ros::spinOnce();    
+        }
+
+        else if( c == 'b' )
+        {
+            unsigned int cnt_init = cnt;
+            while( cnt - cnt_init < 300 )
+            {
+                ros::spinOnce();
+            }
+        }
+
+        else break;
+
+    }
+    ROS_INFO_STREAM("Closing node\n");
+
+  return 0;
+}
+
+
 /*********************************************************************************************
  * Kanade-Lucas-Tomasi feature tracker is used for finding sparse pixel wise correspondences. 
  * The KLT algorithm assumes that a point in the nearby space, and uses image gradients to 
  * find the best possible motion of the feature point.
  *********************************************************************************************/
-void featureTracking(Mat img_1, Mat img_2, vector<Point2f>& points1, vector<Point2f>& points2, vector<uchar>& status)
+/*void featureTracking(Mat img_1, Mat img_2, vector<Point2f>& points1, vector<Point2f>& points2, vector<uchar>& status)
 {
     // this function track points from points1 in img1 tracks
     // img2 and stores points in point2
@@ -190,4 +306,4 @@ int main( int argc, char** argv )
 
     waitKey(100);
     return 0;
-}
+}*/
