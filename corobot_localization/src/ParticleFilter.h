@@ -18,6 +18,7 @@ using corobot_common::Pose;
 typedef struct {
    int particleId;
    Pose pose;
+   double startTheta;   // Holds the particle's starting angle;   
 } Particle;
 
 
@@ -32,13 +33,19 @@ class ParticleFilter
    
       virtual ~ParticleFilter();
       
-      bool initialize (int numParticles);
+      bool initialize (int numParticles, Odometry& startingOdometry);
      
       int getNumParticles() {return mNumParticles;}
       
       ParticleList getParticleList() {return mParticles;};
+      
+      void updateParticlePositions(Odometry& odom);
             
    private:
+   
+      // This is a port of odom_to_pose in utils.py
+      Pose OdomToPose(Odometry& odom);
+      Pose mLastPose;
    
       OccupancyGrid mMap;
       

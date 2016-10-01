@@ -3,14 +3,15 @@
 #include <nav_msgs/Odometry.h>
 
 #include "corobot_common/GetCoMap.h"
+#include "corobot_common/Goal.h"
 #include "corobot_common/Pose.h"
 #include "corobot_common/PoseArray.h"
-
 
 #include "ParticleFilter.h"
 
 using namespace ros;
 using nav_msgs::Odometry;
+using corobot_common::Goal;
 using corobot_common::Pose;
 using corobot_common::PoseArray;
 
@@ -18,6 +19,13 @@ ros::Publisher particlePublisher;
 ParticleFilter* particleFilter = NULL;
 
 void odomCallback(Odometry odom);
+void goalCallback(Goal goal);
+
+// if we recieve a goal we start running the particle filter. 
+bool recievedNewGoal = true;
+
+Odometry testVector[8];
+
 
 int main(int argc, char **argv)
 {
@@ -60,6 +68,7 @@ int main(int argc, char **argv)
    */
 
    ros::Subscriber sub = n.subscribe("odom", 100, odomCallback);
+   ros::Subscriber goal = n.subscribe("goals", 1, goalCallback);
    
    particlePublisher = n.advertise<corobot_common::PoseArray>("particleList", 1);;
 
@@ -76,7 +85,29 @@ int main(int argc, char **argv)
 
       particleFilter = new ParticleFilter(coMap.response.map);
       
-      particleFilter->initialize(10);
+      testVector[7].pose.pose.position.x = 1; // OK counterclock
+      testVector[7].pose.pose.position.y = 0;
+      
+      testVector[1].pose.pose.position.x = 1; // OK counterclock
+      testVector[1].pose.pose.position.y = 1;
+      
+      testVector[2].pose.pose.position.x = 0;
+      testVector[2].pose.pose.position.y = 1;
+      
+      testVector[3].pose.pose.position.x = -1;
+      testVector[3].pose.pose.position.y = 1;
+      
+      testVector[4].pose.pose.position.x = -1;
+      testVector[4].pose.pose.position.y = 0;
+      
+      testVector[5].pose.pose.position.x = -1;
+      testVector[5].pose.pose.position.y = -1;
+      
+      testVector[6].pose.pose.position.x = 0;
+      testVector[6].pose.pose.position.y = -1;
+      
+      testVector[7].pose.pose.position.x = 1;
+      testVector[7].pose.pose.position.y = -1;
 
    }
    else
@@ -87,26 +118,57 @@ int main(int argc, char **argv)
    ros::spin();
 }
 
+void goalCallback(Goal goal)
+{
+   recievedNewGoal = true; 
+}
+
 void odomCallback(Odometry odom)
 {
+   static unsigned int debugIndex;
    double x_m = odom.pose.pose.position.x;
    double y_m = odom.pose.pose.position.y;
    double z_m = 0;
    ROS_INFO("odomCallback called x = %f, y = %f\n", x_m, y_m);
    
-         ParticleFilter::ParticleList results = particleFilter->getParticleList();
-
-      ROS_INFO("PFLocalizationNode::%s results.size = %lu\n", __func__, results.size());   
-
-      PoseArray particles; 
+   // If we recieved a new goal reinitialze the particle filter.
+   if(recievedNewGoal == true)
+   {
+      Odometry testInit;
+      testInit.pose.pose.position.x = 0;
+      testInit.pose.pose.position.y = 0;
       
-      for (ParticleFilter::ParticleList::iterator it=results.begin(); it != results.end(); ++it)
-      {
+      particleFilter->initialize(10, testInit);
+      
+//      particleFilter->initialize(10, odom);
+      recievedNewGoal = false;
+      debugIndex = 0;
+      
+      ROS_INFO("PFLocalizationNode::%s initialization completed\n", __func__); 
+   }
+   else
+   {
+      particleFilter->updateParticlePositions(testVector[(debugIndex % 8)]);
+//      particleFilter->updateParticlePositions(odom);
+      ++debugIndex;
+   }
+         
+   ParticleFilter::ParticleList results = particleFilter->getParticleList();
+
+   ROS_INFO("PFLocalizationNode::%s results.size = %lu\n", __func__, results.size());   
+
+   PoseArray particles; 
+      
+   for (ParticleFilter::ParticleList::iterator it=results.begin(); it != results.end(); ++it)
+   {
+ 
 //         ROS_INFO("PFLocalizationNode::%s it->pose x = %f, y = %f\n", __func__, it->pose.x, it->pose.y);
-         particles.poses.push_back((it->pose));
-      }
+      particles.poses.push_back((it->pose));
+   }
+   
+   ROS_INFO("PFLocalizationNode::%s particles.poses [0] x = %f, y = %f, theta = %f\n\n\n", __func__, particles.poses[0].x, particles.poses[0].y, particles.poses[0].theta);
       
-//      ROS_INFO("PFLocalizationNode::%s First particle is particles[0] x = %f, y = %f\n", __func__, particles.poses[0].x, particles.poses[0].y);
-      particlePublisher.publish(particles);
+// ROS_INFO("PFLocalizationNode::%s First particle is particles[0] x = %f, y = %f\n", __func__, particles.poses[0].x, particles.poses[0].y);
+   particlePublisher.publish(particles);
    
 }
