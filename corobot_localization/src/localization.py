@@ -71,7 +71,7 @@ def main():
     global ekf, pose_pub;
     rospy.init_node("localization")
     ekf = EKF()
-    pose_pub = rospy.Publisher("pose", Pose)
+    pose_pub = rospy.Publisher("pose", Pose, queue_size=1)
     #rospy.Subscriber("odom_combined", PoseWithCovarianceStamped, odom_comb_callback)
     rospy.Subscriber("odom", Odometry, odom_callback)
     # odom_combined comes from robot_pose_ekf, different message type from

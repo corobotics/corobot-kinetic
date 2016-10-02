@@ -10,6 +10,7 @@ import time
 from sensor_msgs.msg import LaserScan
 from diagnostic_msgs.msg import *
 from corobot_common.msg import Pose
+from corobot_common.msg import PoseArray
 from corobot_common.msg import Goal
 from corobot_manager.ui import CorobotMonitorUI
 from std_msgs.msg import String
@@ -102,7 +103,7 @@ class CorobotMonitor():
         self.win.setRecoveryMsg(recovery_msg.name)	
     
     def laserDisp_callback(self, laserDat):
-	self.win.setLaserData(laserDat)
+        self.win.setLaserData(laserDat)
         self.win.after(0,self.win.drawLaserMap)
 
     def wallDisp_callback(self, wallDat):
@@ -134,6 +135,9 @@ class CorobotMonitor():
             out, err = p.communicate()
             print out.split('\n')[0].split(', ')[1]
 
+    def particles_callback(self, particles_message):
+        self.win.setParticles(particles_message)
+        self.win.after(0,self.win.drawParticles)
 
     def init_ros_node(self):
         """Initialize all ROS node/sub/pub/srv stuff."""
@@ -141,6 +145,7 @@ class CorobotMonitor():
 
         rospy.Subscriber("pose", Pose, self.pose_callback)
         rospy.Subscriber("laser_pose", Pose, self.laserpose_callback)
+        rospy.Subscriber("particleList", PoseArray, self.particles_callback)
         rospy.Subscriber("ch_rawnav", Goal, self.rawnav_callback)
         rospy.Subscriber("ch_velcmd", Goal, self.velcmd_callback)
         rospy.Subscriber("ch_obstacle", Goal, self.obstacle_callback)

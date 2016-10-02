@@ -52,6 +52,7 @@ add_message_files(
   Goal.msg
   Landmark.msg
   Pose.msg
+  PoseArray.msg
   UIConfirm.msg
   UIMessage.msg
   Wall.msg

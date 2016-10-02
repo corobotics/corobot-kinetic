@@ -155,9 +155,9 @@ class CorobotManager():
 	#!Tristan
 	"""
 	self.recov = False
-        self.goals_pub = rospy.Publisher("goals", Point)
-        self.goals_nav_pub = rospy.Publisher("goals_nav", Point)
-        self.show_msgs_pub = rospy.Publisher("show_msg", UIMessage)
+        self.goals_pub = rospy.Publisher("goals", Point,queue_size=10)
+        self.goals_nav_pub = rospy.Publisher("goals_nav", Point, queue_size=10)
+        self.show_msgs_pub = rospy.Publisher("show_msg", UIMessage, queue_size=10)
         rospy.loginfo("Listening for client robots.")
         rospy.on_shutdown(self.shutdown)
 

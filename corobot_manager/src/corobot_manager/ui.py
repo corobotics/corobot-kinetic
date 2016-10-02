@@ -28,7 +28,7 @@ class CorobotMonitorUI(Tk):
         self.Nav = [0,0]
         self.obsCache = []
         self.pos = [0,0,0]
-
+        
         self.map = PhotoImage(file = '~corobot/corobot_ws/src/corobot_manager/src/corobot_manager/robotMapCropped-761.gif')
 
         self.frame = Frame(self, width = 1000)
@@ -48,7 +48,9 @@ class CorobotMonitorUI(Tk):
 
         self.marker = self.canvas.create_oval(-5,5,5,-5,fill = 'red')
         self.goal = self.canvas.create_oval(-5,5,5,-5, fill = 'green')
-
+        
+        self.particleMarker = self.canvas.create_oval(-5,5,5,-5,fill = 'cyan')
+        
         self.lazcanvas = Canvas(self.lazframe, width = 400, height = 700, bg = 'white')
         self.lazcanvas.grid(sticky = 'NE')
         self.robotoval = self.lazcanvas.create_oval(195, 605, 205, 595, fill = 'red')
@@ -103,6 +105,7 @@ class CorobotMonitorUI(Tk):
     def setPose(self, x, y, theta, cov):
         self.canvas.delete(self.marker)
         self.pose = [x, y, theta]
+        rospy.loginfo("Ui::setPose x = %f y = %f\n", x, y)
         self.marker = self.canvas.create_oval((x/.1312)-73, self.map.height()-(y/.1312) + 5, (x/.1312) - 63, self.map.height()-(y/.1312)-5, fill = 'red')
         self.canvas.create_oval((x/.1312)-69, self.map.height()-(y/.1312) + 1, (x/.1312) - 67, self.map.height()-(y/.1312)-1, fill = self.pathcolor, outline = self.pathcolor)
         self.xinfo.configure(text="X: {0:6.3f}".format(x))
@@ -247,6 +250,23 @@ class CorobotMonitorUI(Tk):
             posRel = [posPol[0] * math.cos(posPol[1]), posPol[0] * -math.sin(posPol[1])]
             self.lazcanvas.create_oval(posRel[1]*100 + 200 - 10,600 - posRel[0] * 100 + 10, posRel[1]*100 + 200  + 10, 600 - posRel[0] * 100 - 10, fill = 'red', tags = 'obstacles')
 
+    def setParticles(self, particles):
+        self.particles = particles
+        
+    def drawParticles(self): 
+        #rospy.loginfo("Ui::drawParticles called\n")
+        
+        # lets just draw 1 particle.
+        self.canvas.delete(self.particleMarker)
+
+        x = self.particles.poses[0].x
+        y = self.particles.poses[0].y
+        
+        #rospy.loginfo("Ui::drawParticles x = %f y = %f\n", x, y)
+        
+        self.particleMarker = self.canvas.create_oval((x/.1312)-73, self.map.height()-(y/.1312) + 5, (x/.1312) - 63, self.map.height()-(y/.1312)-5, fill = 'red')
+        #self.canvas.create_oval((x/.1312)-69, self.map.height()-(y/.1312) + 1, (x/.1312) - 67, self.map.height()-(y/.1312)-1, fill = self.pathcolor, outline = #self.pathcolor)
+                    
     def setWalls(self,wallDat):
         self.wallDat = wallDat
         
