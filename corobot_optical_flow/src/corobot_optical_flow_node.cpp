@@ -77,13 +77,13 @@ void depthCallback(const sensor_msgs::ImageConstPtr& msg_depth)
 // Handler / callback
 void callback( const sensor_msgs::ImageConstPtr& msg_rgb , const sensor_msgs::ImageConstPtr& msg_depth )
 {
-	ROS_INFO_STREAM("Thread called");
-	cv_bridge::CvImagePtr img_ptr_rgb;
+    ROS_INFO_STREAM("Thread called");
+    cv_bridge::CvImagePtr img_ptr_rgb;
     cv_bridge::CvImagePtr img_ptr_depth;
 
-   	try
-	{
-       	img_ptr_depth = cv_bridge::toCvCopy(*msg_depth, sensor_msgs::image_encodings::TYPE_16UC1);
+    try
+    {
+           img_ptr_depth = cv_bridge::toCvCopy(*msg_depth, sensor_msgs::image_encodings::TYPE_16UC1);
     }
     catch (cv_bridge::Exception& e)
     {
@@ -91,8 +91,8 @@ void callback( const sensor_msgs::ImageConstPtr& msg_rgb , const sensor_msgs::Im
         return;
     }
     
-	try
-	{
+    try
+    {
         img_ptr_rgb = cv_bridge::toCvCopy(*msg_rgb, sensor_msgs::image_encodings::BAYER_GRBG8);
     }
     catch (cv_bridge::Exception& e)
@@ -104,30 +104,30 @@ void callback( const sensor_msgs::ImageConstPtr& msg_rgb , const sensor_msgs::Im
     Mat& mat_depth = img_ptr_depth->image;
     Mat& mat_rgb = img_ptr_rgb->image;
 
-	Mat currImage;
-	cvtColor(mat_rgb, currImage, COLOR_BGR2GRAY);
+    Mat currImage;
+    cvtColor(mat_rgb, currImage, COLOR_BGR2GRAY);
 
-	// if this is first image store it and go to next iteration
-	if(false == init1)	
-	{
-		prevImage = currImage.clone();
-		init1 = true;
-		return;
-	}	
+    // if this is first image store it and go to next iteration
+    if(false == init1)    
+    {
+        prevImage = currImage.clone();
+        init1 = true;
+        return;
+    }    
 
-	Mat E, R, t, mask;
-	vector<uchar> status;
-	vector<Point2f> currFeatures;
-	vector<Point2f> prevFeatures;
+    Mat E, R, t, mask;
+    vector<uchar> status;
+    vector<Point2f> currFeatures;
+    vector<Point2f> prevFeatures;
         
     featureDetection(prevImage, prevFeatures);
     featureTracking(prevImage, currImage, prevFeatures, currFeatures, status);
-	
-	// RANSAC Random sample consensus
+    
+    // RANSAC Random sample consensus
     E = findEssentialMat(currFeatures, prevFeatures, focal, pp, RANSAC, 0.999, 1.0, mask);
     recoverPose(E, currFeatures, prevFeatures, R, t, focal, pp, mask);
         
-	if(false == init2)
+    if(false == init2)
     {
         R_f = R.clone();
         t_f = t.clone();
@@ -138,23 +138,23 @@ void callback( const sensor_msgs::ImageConstPtr& msg_rgb , const sensor_msgs::Im
         t_f = t_f + (R_f*t);
         R_f = R*R_f;
     }
-	
-	prevImage = currImage.clone();
+    
+    prevImage = currImage.clone();
         
     int myx = int(t_f.at<double>(0));
     int myz = int(t_f.at<double>(2));
 
-	ROS_INFO_STREAM("X = " << myx << " Z = " << myz);
+    ROS_INFO_STREAM("X = " << myx << " Z = " << myz);
 }
 
 int main(int argc, char** argv)
 {
     // Initialize the ROS system and become a node.
-  	ros::init(argc, argv, "listner");
-  	ros::NodeHandle nh;
+      ros::init(argc, argv, "listner");
+      ros::NodeHandle nh;
 
-	//ros::Subscriber sub1 = nh.subscribe("/camera/rgb/image_raw",1000,rgbCallback);
-	//ros::Subscriber sub2 = nh.subscribe("/camera/depth/image",1000,depthCallback);
+    //ros::Subscriber sub1 = nh.subscribe("/camera/rgb/image_raw",1000,rgbCallback);
+    //ros::Subscriber sub2 = nh.subscribe("/camera/depth/image",1000,depthCallback);
 
     message_filters::Subscriber<sensor_msgs::Image> subscriber_depth( nh , "/camera/depth/image" , 1 );
     message_filters::Subscriber<sensor_msgs::Image> subscriber_rgb( nh , "/camera/rgb/image_raw" , 1 );
@@ -162,11 +162,11 @@ int main(int argc, char** argv)
 
     typedef sync_policies::ApproximateTime<sensor_msgs::Image, sensor_msgs::Image> MySyncPolicy;
 
-  	// ApproximateTime take a queue size as its constructor argument, hence MySyncPolicy(10)
-  	Synchronizer<MySyncPolicy> sync(MySyncPolicy(10), subscriber_rgb, subscriber_depth );
-  	sync.registerCallback(boost::bind(&callback, _1, _2));
+    // ApproximateTime take a queue size as its constructor argument, hence MySyncPolicy(10)
+    Synchronizer<MySyncPolicy> sync(MySyncPolicy(10), subscriber_rgb, subscriber_depth );
+    sync.registerCallback(boost::bind(&callback, _1, _2));
 
-	ros::spin();
+    ros::spin();
     
-	return 0;
+    return 0;
 }
