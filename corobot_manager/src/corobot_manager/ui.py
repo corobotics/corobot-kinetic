@@ -49,7 +49,8 @@ class CorobotMonitorUI(Tk):
         self.marker = self.canvas.create_oval(-5,5,5,-5,fill = 'red')
         self.goal = self.canvas.create_oval(-5,5,5,-5, fill = 'green')
         
-        self.particleMarker = self.canvas.create_oval(-5,5,5,-5,fill = 'cyan')
+        #self.particleMarker = self.canvas.create_oval(-5,5,5,-5,fill = 'cyan')
+        self.particleMarkers = []
         
         self.lazcanvas = Canvas(self.lazframe, width = 400, height = 700, bg = 'white')
         self.lazcanvas.grid(sticky = 'NE')
@@ -256,15 +257,19 @@ class CorobotMonitorUI(Tk):
     def drawParticles(self): 
         #rospy.loginfo("Ui::drawParticles called\n")
         
-        # lets just draw 1 particle.
-        self.canvas.delete(self.particleMarker)
-
-        x = self.particles.poses[0].x
-        y = self.particles.poses[0].y
+        # Remove the old particles from the map.
+        for particleMarker in self.particleMarkers:
+            self.canvas.delete(particleMarker)
+        del self.particleMarkers[:]
         
         #rospy.loginfo("Ui::drawParticles x = %f y = %f\n", x, y)
         
-        self.particleMarker = self.canvas.create_oval((x/.1312)-73, self.map.height()-(y/.1312) + 5, (x/.1312) - 63, self.map.height()-(y/.1312)-5, fill = 'red')
+        # draw the new particles
+        for currentPose in self.particles.poses:
+             x = currentPose.x
+             y = currentPose.y
+             particleMarker = self.canvas.create_oval((x/.1312)-73, self.map.height()-(y/.1312) + 5, (x/.1312) - 63, self.map.height()-(y/.1312)-5, fill = 'cyan')
+             self.particleMarkers.append(particleMarker)
         #self.canvas.create_oval((x/.1312)-69, self.map.height()-(y/.1312) + 1, (x/.1312) - 67, self.map.height()-(y/.1312)-1, fill = self.pathcolor, outline = #self.pathcolor)
                     
     def setWalls(self,wallDat):
