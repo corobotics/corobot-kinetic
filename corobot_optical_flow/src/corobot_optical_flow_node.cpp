@@ -18,8 +18,6 @@ using namespace cv;
 using namespace std;
 using namespace message_filters;
 
-#define MAX_FRAME 10
-
 #define MAX_X 1200
 #define MAX_Z 1200
 
@@ -35,7 +33,7 @@ double focal = 2.9;
 
 // principle point of the camera
 // TO BE UPDATED
-cv::Point2d pp(607.1928, 185.2157);
+cv::Point2d pp(0,0);
     
   
 /*********************************************************************************************
@@ -57,16 +55,21 @@ void featureTracking(Mat img_1, Mat img_2, vector<Point2f>& points1, vector<Poin
 void featureDetection(Mat img_1, vector<Point2f>& points1)
 {
     vector<KeyPoint> keypoints_1;
-    int fast_threshold = 20;
+    int fast_threshold = 100;
     bool nonmaxSuppression = true;
     // FAST (Features from Accelerated Segment Test) corner detector
     FAST(img_1, keypoints_1, fast_threshold, nonmaxSuppression);
     KeyPoint::convert(keypoints_1, points1, vector<int>());
 }  
 
-void rgbCallback(const sensor_msgs::ImageConstPtr& msg_rgb)
+void rgbRawCallback(const sensor_msgs::ImageConstPtr& msg_rgb)
 {
-   ROS_INFO("I heard from rgb");
+   ROS_INFO("I heard from rgb raw");
+}
+
+void rgbColorCallback(const sensor_msgs::ImageConstPtr& msg_rgb)
+{
+   ROS_INFO("I heard from rgb color");
 }
 
 void depthCallback(const sensor_msgs::ImageConstPtr& msg_depth)
@@ -77,7 +80,6 @@ void depthCallback(const sensor_msgs::ImageConstPtr& msg_depth)
 // Handler / callback
 void callback( const sensor_msgs::ImageConstPtr& msg_rgb , const sensor_msgs::ImageConstPtr& msg_depth )
 {
-    ROS_INFO_STREAM("Thread called");
     cv_bridge::CvImagePtr img_ptr_rgb;
     cv_bridge::CvImagePtr img_ptr_depth;
 
@@ -104,9 +106,15 @@ void callback( const sensor_msgs::ImageConstPtr& msg_rgb , const sensor_msgs::Im
     Mat& mat_depth = img_ptr_depth->image;
     Mat& mat_rgb = img_ptr_rgb->image;
 
-    Mat currImage;
-    cvtColor(mat_rgb, currImage, COLOR_BGR2GRAY);
-
+    //vector<int> png_parameters;
+    //png_parameters.push_back(CV_IMWRITE_PNG_COMPRESSION);
+    
+    Mat currImage = mat_rgb;
+    //cvtColor(mat_rgb, currImage, CV_BayerBG2BGR);
+    
+    //cv::imwrite("image1.PNG",mat_rgb,png_parameters);
+    //cv::imwrite("image2.PNG",currImage,png_parameters);
+    
     // if this is first image store it and go to next iteration
     if(false == init1)    
     {
@@ -126,7 +134,17 @@ void callback( const sensor_msgs::ImageConstPtr& msg_rgb , const sensor_msgs::Im
     // RANSAC Random sample consensus
     E = findEssentialMat(currFeatures, prevFeatures, focal, pp, RANSAC, 0.999, 1.0, mask);
     recoverPose(E, currFeatures, prevFeatures, R, t, focal, pp, mask);
-        
+    
+    for(int i=0;i<currFeatures.size();i++)
+    {
+        Point2f pt = currFeatures.at(i);
+
+        circle(mat_rgb,pt,2,CV_RGB(255,0,0),1);
+    }      
+  
+    imshow("image",mat_rgb);
+    waitKey(1);
+
     if(false == init2)
     {
         R_f = R.clone();
@@ -144,18 +162,20 @@ void callback( const sensor_msgs::ImageConstPtr& msg_rgb , const sensor_msgs::Im
     int myx = int(t_f.at<double>(0));
     int myz = int(t_f.at<double>(2));
 
-    ROS_INFO_STREAM("X = " << myx << " Z = " << myz);
+    ROS_INFO_STREAM("X = " << myx << "Y = " << myz);
+    //ROS_INFO_STREAM("Rotational vector = " << R_f);
 }
 
 int main(int argc, char** argv)
 {
     // Initialize the ROS system and become a node.
-      ros::init(argc, argv, "listner");
-      ros::NodeHandle nh;
+    ros::init(argc, argv, "listner");
+    ros::NodeHandle nh;
 
-    //ros::Subscriber sub1 = nh.subscribe("/camera/rgb/image_raw",1000,rgbCallback);
-    //ros::Subscriber sub2 = nh.subscribe("/camera/depth/image",1000,depthCallback);
-
+    //ros::Subscriber sub0 = nh.subscribe("/camera/rgb/image_mono",1000,rgbColorCallback);
+    //ros::Subscriber sub1 = nh.subscribe("/camera/rgb/image_raw",1000,rgbRawCallback);
+    //ros::Subscriber sub2 = nh.subscribe("/camera/depth/disparity",1000,depthCallback);
+    
     message_filters::Subscriber<sensor_msgs::Image> subscriber_depth( nh , "/camera/depth/image" , 1 );
     message_filters::Subscriber<sensor_msgs::Image> subscriber_rgb( nh , "/camera/rgb/image_raw" , 1 );
 
@@ -165,7 +185,7 @@ int main(int argc, char** argv)
     // ApproximateTime take a queue size as its constructor argument, hence MySyncPolicy(10)
     Synchronizer<MySyncPolicy> sync(MySyncPolicy(10), subscriber_rgb, subscriber_depth );
     sync.registerCallback(boost::bind(&callback, _1, _2));
-
+    
     ros::spin();
     
     return 0;
