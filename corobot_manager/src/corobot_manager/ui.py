@@ -258,19 +258,20 @@ class CorobotMonitorUI(Tk):
         #rospy.loginfo("Ui::drawParticles called\n")
         
         # Remove the old particles from the map.
-        for particleMarker in self.particleMarkers:
-            self.canvas.delete(particleMarker)
-        del self.particleMarkers[:]
+        if len(self.particles.poses) > 0:
+            for particleMarker in self.particleMarkers:
+                self.canvas.delete(particleMarker)
+            del self.particleMarkers[:]
         
         #rospy.loginfo("Ui::drawParticles x = %f y = %f\n", x, y)
         
-        # draw the new particles
-        for currentPose in self.particles.poses:
-             x = currentPose.x
-             y = currentPose.y
-             particleMarker = self.canvas.create_oval((x/.1312)-73, self.map.height()-(y/.1312) + 5, (x/.1312) - 63, self.map.height()-(y/.1312)-5, fill = 'cyan')
-             self.particleMarkers.append(particleMarker)
-        #self.canvas.create_oval((x/.1312)-69, self.map.height()-(y/.1312) + 1, (x/.1312) - 67, self.map.height()-(y/.1312)-1, fill = self.pathcolor, outline = #self.pathcolor)
+        # draw the new particles if we have any.
+        if len(self.particles.poses) > 0:
+            for currentPose in self.particles.poses:
+                x = currentPose.x
+                y = currentPose.y
+                particleMarker = self.canvas.create_oval((x/.1312)-73, self.map.height()-(y/.1312) + 5, (x/.1312) - 63, self.map.height()-(y/.1312)-5, fill = 'cyan')
+                self.particleMarkers.append(particleMarker)
                     
     def setWalls(self,wallDat):
         self.wallDat = wallDat

@@ -72,6 +72,7 @@ bool ParticleFilter::initialize(int numParticles, Odometry& startingOdometry)
                // theta and start theta should be the same.
                particle.startTheta = ((index % 360) * M_PI/180);
                particle.pose.theta = particle.startTheta;
+
                
                // We're using a circle which is a 4 quadrant inverse tangent.
                // we only have to check the zero crossing in the counter clockwise direction.
@@ -109,6 +110,9 @@ void ParticleFilter::updateParticlePositions(Odometry& odom)
    Pose diffPose;
    double rho = 0;
    double diffTheta = 0;
+   uint32_t mapPosx = 0;
+   uint32_t mapPosy = 0;
+   uint32_t index = 0;
    
    currentPose = OdomToPose(odom);
    
@@ -132,7 +136,8 @@ void ParticleFilter::updateParticlePositions(Odometry& odom)
    ROS_INFO("PFLocalizationNode::%s rho %f\n", __func__, rho);
    
    // Update the particle positions
-   for (ParticleFilter::ParticleList::iterator it = mParticles.begin(); it != mParticles.end(); ++it)
+   ParticleFilter::ParticleList::iterator it = mParticles.begin();
+   while ( it != mParticles.end())
    {
       // First update the orientation which is based on the starting orientation of the particle;
       it->pose.theta = diffTheta + it->startTheta;
@@ -155,6 +160,24 @@ void ParticleFilter::updateParticlePositions(Odometry& odom)
       it->pose.x = it->pose.x + rho * cos( it->pose.theta);
       it->pose.y = it->pose.y + rho * sin( it->pose.theta);
       
+            // check to see if we crashed into a wall. If we did the particle is false so
+      // kill it.
+      
+      mapPosx = it->pose.x / mMap.info.resolution;
+      mapPosy = it->pose.y / mMap.info.resolution;
+      
+      index = mapPosx + (mapPosy * mMap.info.width);
+      
+      if (mMap.data[index] != 0)
+      {
+          uint8_t temp = mMap.data[index];
+          ROS_INFO("PFLocalizationNode::%s erasing it->pose.theta %f mapdata = %d\n", __func__, it->pose.theta, temp);
+          it = mParticles.erase(it);
+      }
+      else
+      {
+         ++it;
+      }
 //         ROS_INFO("PFLocalizationNode::%s it->pose x = %f, y = %f, theta = %f\n", __func__, it->pose.x, it->pose.y it->pose.theta);
    }
    
