@@ -122,27 +122,44 @@ int main(int argc, char **argv)
       
       testVector[0].pose.pose.position.x = 1.0; // OK counterclock
       testVector[0].pose.pose.position.y = 0;
+      testVector[0].pose.pose.orientation.z = 0;
+      testVector[0].pose.pose.orientation.w = 0;
       
       testVector[1].pose.pose.position.x = 1; // OK counterclock
       testVector[1].pose.pose.position.y = 1;
+      testVector[1].pose.pose.orientation.z = 0;
+      testVector[1].pose.pose.orientation.w = 0;
       
       testVector[2].pose.pose.position.x = 0;
       testVector[2].pose.pose.position.y = 1;
+      testVector[2].pose.pose.orientation.z = 0;
+      testVector[2].pose.pose.orientation.w = 0;
       
       testVector[3].pose.pose.position.x = -1;
       testVector[3].pose.pose.position.y = 1;
+      testVector[3].pose.pose.orientation.z = 0;
+      testVector[3].pose.pose.orientation.w = 0;
       
       testVector[4].pose.pose.position.x = -1;
       testVector[4].pose.pose.position.y = 0;
+      testVector[4].pose.pose.orientation.z = 0;
+      testVector[4].pose.pose.orientation.w = 0;
       
       testVector[5].pose.pose.position.x = -1;
       testVector[5].pose.pose.position.y = -1;
+      testVector[5].pose.pose.orientation.z = 0;
+      testVector[5].pose.pose.orientation.w = 0;
       
       testVector[6].pose.pose.position.x = 0;
       testVector[6].pose.pose.position.y = -1;
+      testVector[6].pose.pose.orientation.z = 0;
+      testVector[6].pose.pose.orientation.w = 0;
       
       testVector[7].pose.pose.position.x = 1;
       testVector[7].pose.pose.position.y = -1;
+      testVector[7].pose.pose.orientation.z = 0;
+      testVector[7].pose.pose.orientation.w = 0;
+
 
       particleFilterState = IDLE;
    }

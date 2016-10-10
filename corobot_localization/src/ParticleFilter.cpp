@@ -95,9 +95,17 @@ bool ParticleFilter::initialize(int numParticles, Odometry& startingOdometry)
 Pose ParticleFilter::OdomToPose(Odometry& odom)
 {
    Pose pose;
+   double qz = 0;
+   double qw = 0;
    
    pose.x = odom.pose.pose.position.x;
    pose.y = odom.pose.pose.position.y;
+   
+   // Get the Robot orientation.
+   qz = odom.pose.pose.orientation.z;
+   qw = odom.pose.pose.orientation.w;
+   
+   pose.theta = atan2(2 * qw * qz, 1 - 2 * pow(qz, 2));
    
    return pose;
 }
@@ -114,8 +122,8 @@ void ParticleFilter::updateParticlePositions(Odometry& odom)
    
    currentPose = OdomToPose(odom);
    
-   ROS_INFO("PFLocalizationNode::%s currentPose.x %f  currentPose.y %f\n", __func__, currentPose.x, currentPose.y);
-   ROS_INFO("PFLocalizationNode::%s mLastPose.x %f  mLastPose.y %f\n", __func__, mLastPose.x, mLastPose.y);
+   ROS_INFO("PFLocalizationNode::%s currentPose.x %f  currentPose.y %f currentPose.theta %f\n", __func__, currentPose.x, currentPose.y, currentPose.theta);
+   ROS_INFO("PFLocalizationNode::%s mLastPose.x %f  mLastPose.y %f mLastPose.theta %f\n", __func__, mLastPose.x, mLastPose.y, mLastPose.theta);
    
    diffPose.x = currentPose.x - mLastPose.x;
    diffPose.y = currentPose.y - mLastPose.y;
