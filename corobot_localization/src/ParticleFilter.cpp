@@ -70,15 +70,13 @@ bool ParticleFilter::initialize(int numParticles, Odometry& startingOdometry)
                
                // make the orientation random.
                // theta and start theta should be the same.
-               particle.startTheta = ((index % 360) * M_PI/180);
-               particle.pose.theta = particle.startTheta;
-
+               particle.pose.theta = ((index % 360) * M_PI/180);
                
                // We're using a circle which is a 4 quadrant inverse tangent.
                // we only have to check the zero crossing in the counter clockwise direction.
-               if(particle.startTheta > M_PI)
+               if(particle.pose.theta > M_PI)
                {
-                  particle.startTheta -= 2 * M_PI;
+                  particle.pose.theta -= 2 * M_PI;
                }
                
                mParticles.push_back (particle);
@@ -109,7 +107,7 @@ void ParticleFilter::updateParticlePositions(Odometry& odom)
    Pose currentPose;
    Pose diffPose;
    double rho = 0;
-   double diffTheta = 0;
+   double alpha = 0;
    uint32_t mapPosx = 0;
    uint32_t mapPosy = 0;
    uint32_t index = 0;
@@ -121,14 +119,28 @@ void ParticleFilter::updateParticlePositions(Odometry& odom)
    
    diffPose.x = currentPose.x - mLastPose.x;
    diffPose.y = currentPose.y - mLastPose.y;
+   diffPose.theta = currentPose.theta - mLastPose.theta;
+   
+   if (diffPose.theta > M_PI)
+   {
+      // Counterclockwise
+      diffPose.theta -= 2 * M_PI;
+     
+   }
+   else if (diffPose.theta < -M_PI)
+   {
+      // Clockwise
+      diffPose.theta += 2 * M_PI;  
+   }
+   
    ROS_INFO("PFLocalizationNode::%s diffPose.x %f  diffPose.y %f\n", __func__, diffPose.x, diffPose.y);
    
    if(diffPose.x != 0 || diffPose.y != 0)
    {
-      diffTheta = atan2 (diffPose.y, diffPose.x);
+      alpha = atan2 (diffPose.y, diffPose.x) + mLastPose.theta;
    }
    
-   ROS_INFO("PFLocalizationNode::%s difftheta %f\n", __func__, diffTheta);
+   ROS_INFO("PFLocalizationNode::%s alpha %f\n", __func__, alpha);
    
    // Calculate rho!
    rho = sqrt((pow(diffPose.x, 2) + pow(diffPose.y, 2)));
@@ -139,11 +151,14 @@ void ParticleFilter::updateParticlePositions(Odometry& odom)
    ParticleFilter::ParticleList::iterator it = mParticles.begin();
    while ( it != mParticles.end())
    {
-      // First update the orientation which is based on the starting orientation of the particle;
-      it->pose.theta = diffTheta + it->startTheta;
+
+      ROS_INFO("PFLocalizationNode::%s it->pose.theta %f\n", __func__, it->pose.theta);
       
-      // We're using a circle which is a 4 quadrant inverse tangent.
-      // Fix up crossing the PI/-PI boundary 
+      // Now that we're facing the "correct" direction up date the x and y coordinates.
+      it->pose.x = it->pose.x + rho * cos( it->pose.theta + alpha);
+      it->pose.y = it->pose.y + rho * sin( it->pose.theta + alpha);
+      it->pose.theta += diffPose.theta;
+      
       if (it->pose.theta > M_PI)
       {
          // Counterclockwise
@@ -156,18 +171,16 @@ void ParticleFilter::updateParticlePositions(Odometry& odom)
          it->pose.theta += 2 * M_PI;  
       }
       
-      // Now that we're facing the "correct" direction up date the x and y coordinates.
-      it->pose.x = it->pose.x + rho * cos( it->pose.theta);
-      it->pose.y = it->pose.y + rho * sin( it->pose.theta);
+      ROS_INFO("PFLocalizationNode::%s it->pose.x %f, it->pose.y %f, it->pose.theta %f\n", __func__, it->pose.x, it->pose.y , it->pose.theta);
       
-            // check to see if we crashed into a wall. If we did the particle is false so
+      // check to see if we crashed into a wall. If we did the particle is false so
       // kill it.
       
       mapPosx = it->pose.x / mMap.info.resolution;
       mapPosy = it->pose.y / mMap.info.resolution;
       
       index = mapPosx + (mapPosy * mMap.info.width);
-      
+
       if (mMap.data[index] != 0)
       {
           uint8_t temp = mMap.data[index];
