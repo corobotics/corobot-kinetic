@@ -37,7 +37,7 @@ class ParticleFilter
      
       int getNumParticles() {return mNumParticles;}
       
-      ParticleList getParticleList() {return mParticles;};
+      ParticleList& getParticleList() {return mParticles;};
       
       void updateParticlePositions(Odometry& odom);
             

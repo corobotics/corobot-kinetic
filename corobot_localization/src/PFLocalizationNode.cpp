@@ -174,7 +174,7 @@ void odomCallback(Odometry odom)
       testInit.pose.pose.position.x = 0;
       testInit.pose.pose.position.y = 0;
       
-      particleFilter->initialize(10, testInit);
+      particleFilter->initialize(100, testInit);
       
 //      particleFilter->initialize(10, odom);
       debugIndex = 0;
@@ -194,7 +194,7 @@ else if (particleFilterState == RUNNING)
 //    particleFilter->updateParticlePositions(odom);
       ++debugIndex;
 
-      ParticleFilter::ParticleList results = particleFilter->getParticleList();
+      ParticleFilter::ParticleList& results = particleFilter->getParticleList();
 
       ROS_INFO("PFLocalizationNode::%s results.size = %lu\n", __func__, results.size());   
 
