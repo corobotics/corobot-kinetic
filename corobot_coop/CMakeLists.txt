@@ -7,7 +7,6 @@ project(corobot_coop)
 find_package(catkin REQUIRED COMPONENTS
   cv_bridge
   nav_msgs
-  opencv2
   rospy
   sensor_msgs
   std_msgs
