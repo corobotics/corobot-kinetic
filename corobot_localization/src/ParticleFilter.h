@@ -18,7 +18,6 @@ using corobot_common::Pose;
 typedef struct {
    int particleId;
    Pose pose;
-   double startTheta;   // Holds the particle's starting angle;   
 } Particle;
 
 
@@ -37,7 +36,7 @@ class ParticleFilter
      
       int getNumParticles() {return mNumParticles;}
       
-      ParticleList getParticleList() {return mParticles;};
+      ParticleList& getParticleList() {return mParticles;};
       
       void updateParticlePositions(Odometry& odom);
             

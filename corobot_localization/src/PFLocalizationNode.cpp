@@ -21,11 +21,21 @@ ParticleFilter* particleFilter = NULL;
 void odomCallback(Odometry odom);
 void goalCallback(Goal goal);
 
+typedef enum {
+  STOPPED,
+  IDLE,
+  INITIALIZING,
+  INITIALIZED,
+  RUNNING,
+  PROCESSINGODOM,
+  STATEMAX
+} ParticleFilterState;
+
 // if we recieve a goal we start running the particle filter. 
 bool recievedNewGoal = true;
+ParticleFilterState particleFilterState = STOPPED;
 
 Odometry testVector[8];
-
 
 int main(int argc, char **argv)
 {
@@ -84,31 +94,74 @@ int main(int argc, char **argv)
 //      ROS_INFO("coMap.response.map.info.width %d!\n", coMap.response.map.info.width);
 
       particleFilter = new ParticleFilter(coMap.response.map);
+/*      
+      testVector[0].pose.pose.position.y = 0.1; // OK counterclock
+      testVector[0].pose.pose.position.x = 0;
       
-      testVector[7].pose.pose.position.x = 1; // OK counterclock
-      testVector[7].pose.pose.position.y = 0;
+      testVector[1].pose.pose.position.y = 0.2; // OK counterclock
+      testVector[1].pose.pose.position.x = 0;
+      
+      testVector[2].pose.pose.position.y = 0.3; // OK counterclock
+      testVector[2].pose.pose.position.x = 0;
+      
+      testVector[3].pose.pose.position.y = 0.4; // OK counterclock
+      testVector[3].pose.pose.position.x = 0;
+      
+      testVector[4].pose.pose.position.y = 0.5; // OK counterclock
+      testVector[4].pose.pose.position.x = 0;
+      
+      testVector[5].pose.pose.position.y = 0.6; // OK counterclock
+      testVector[5].pose.pose.position.x = 0;
+
+      testVector[6].pose.pose.position.y = 0.7; // OK counterclock
+      testVector[6].pose.pose.position.x = 0;
+      
+      testVector[7].pose.pose.position.y = 0.8; // OK counterclock
+      testVector[7].pose.pose.position.x = 0;
+      */
+      
+      testVector[0].pose.pose.position.x = 1.0; // OK counterclock
+      testVector[0].pose.pose.position.y = 0;
+      testVector[0].pose.pose.orientation.z = 0;
+      testVector[0].pose.pose.orientation.w = 0;
       
       testVector[1].pose.pose.position.x = 1; // OK counterclock
       testVector[1].pose.pose.position.y = 1;
+      testVector[1].pose.pose.orientation.z = 0;
+      testVector[1].pose.pose.orientation.w = 0;
       
       testVector[2].pose.pose.position.x = 0;
       testVector[2].pose.pose.position.y = 1;
+      testVector[2].pose.pose.orientation.z = 0;
+      testVector[2].pose.pose.orientation.w = 0;
       
       testVector[3].pose.pose.position.x = -1;
       testVector[3].pose.pose.position.y = 1;
+      testVector[3].pose.pose.orientation.z = 0;
+      testVector[3].pose.pose.orientation.w = 0;
       
       testVector[4].pose.pose.position.x = -1;
       testVector[4].pose.pose.position.y = 0;
+      testVector[4].pose.pose.orientation.z = 0;
+      testVector[4].pose.pose.orientation.w = 0;
       
       testVector[5].pose.pose.position.x = -1;
       testVector[5].pose.pose.position.y = -1;
+      testVector[5].pose.pose.orientation.z = 0;
+      testVector[5].pose.pose.orientation.w = 0;
       
       testVector[6].pose.pose.position.x = 0;
       testVector[6].pose.pose.position.y = -1;
+      testVector[6].pose.pose.orientation.z = 0;
+      testVector[6].pose.pose.orientation.w = 0;
       
       testVector[7].pose.pose.position.x = 1;
       testVector[7].pose.pose.position.y = -1;
+      testVector[7].pose.pose.orientation.z = 0;
+      testVector[7].pose.pose.orientation.w = 0;
 
+
+      particleFilterState = IDLE;
    }
    else
    {
@@ -132,43 +185,44 @@ void odomCallback(Odometry odom)
    ROS_INFO("odomCallback called x = %f, y = %f\n", x_m, y_m);
    
    // If we recieved a new goal reinitialze the particle filter.
-   if(recievedNewGoal == true)
+   if(recievedNewGoal == true && particleFilterState == IDLE)
    {
       Odometry testInit;
       testInit.pose.pose.position.x = 0;
       testInit.pose.pose.position.y = 0;
       
-      particleFilter->initialize(10, testInit);
+      particleFilter->initialize(100, testInit);
       
 //      particleFilter->initialize(10, odom);
-      recievedNewGoal = false;
       debugIndex = 0;
-      
-      ROS_INFO("PFLocalizationNode::%s initialization completed\n", __func__); 
-   }
-   else
-   {
-      particleFilter->updateParticlePositions(testVector[(debugIndex % 8)]);
-//      particleFilter->updateParticlePositions(odom);
-      ++debugIndex;
-   }
-         
-   ParticleFilter::ParticleList results = particleFilter->getParticleList();
-
-   ROS_INFO("PFLocalizationNode::%s results.size = %lu\n", __func__, results.size());   
-
-   PoseArray particles; 
-      
-   for (ParticleFilter::ParticleList::iterator it=results.begin(); it != results.end(); ++it)
-   {
+      recievedNewGoal = false;
+            
+      ROS_INFO("PFLocalizationNode::%s initialization completed\n", __func__);
  
-//         ROS_INFO("PFLocalizationNode::%s it->pose x = %f, y = %f\n", __func__, it->pose.x, it->pose.y);
-      particles.poses.push_back((it->pose));
+      particleFilterState = RUNNING;
    }
-   
-   ROS_INFO("PFLocalizationNode::%s particles.poses [0] x = %f, y = %f, theta = %f\n\n\n", __func__, particles.poses[0].x, particles.poses[0].y, particles.poses[0].theta);
+else if (particleFilterState == RUNNING)
+   {
+      particleFilterState = PROCESSINGODOM;
+
+      PoseArray particles; 
+
+      particleFilter->updateParticlePositions(testVector[(debugIndex % 8)]);
+//    particleFilter->updateParticlePositions(odom);
+      ++debugIndex;
+
+      ParticleFilter::ParticleList& results = particleFilter->getParticleList();
+
+      ROS_INFO("PFLocalizationNode::%s results.size = %lu\n", __func__, results.size());   
+
+      for (ParticleFilter::ParticleList::iterator it=results.begin(); it != results.end(); ++it)
+      {
+//         ROS_INFO("PFLocalizationNode::%s it->pose x = %f, y = %f\n", __func__, it->pose.x, it->pose.y);
+         particles.poses.push_back((it->pose));
+      }
+
+      particlePublisher.publish(particles);
       
-// ROS_INFO("PFLocalizationNode::%s First particle is particles[0] x = %f, y = %f\n", __func__, particles.poses[0].x, particles.poses[0].y);
-   particlePublisher.publish(particles);
-   
+      particleFilterState = RUNNING;
+   }
 }
