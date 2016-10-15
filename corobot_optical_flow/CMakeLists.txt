@@ -132,6 +132,8 @@ include_directories(
 ## either from message generation or dynamic reconfigure
 # add_dependencies(corobot_optical_flow ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
 
+add_definitions(-std=c++11)
+
 ## Declare a C++ executable
 add_executable(corobot_optical_flow_node src/corobot_optical_flow_node.cpp)
 
