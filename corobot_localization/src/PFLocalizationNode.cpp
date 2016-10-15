@@ -77,7 +77,7 @@ int main(int argc, char **argv)
    * away the oldest ones.
    */
 
-   ros::Subscriber sub = n.subscribe("odom", 100, odomCallback);
+   ros::Subscriber sub = n.subscribe("odom", 10, odomCallback);
    ros::Subscriber goal = n.subscribe("goals", 1, goalCallback);
    
    particlePublisher = n.advertise<corobot_common::PoseArray>("particleList", 1);;
@@ -93,7 +93,7 @@ int main(int argc, char **argv)
 //      ROS_INFO("coMap.response.map.info.height %d!\n", coMap.response.map.info.height);
 //      ROS_INFO("coMap.response.map.info.width %d!\n", coMap.response.map.info.width);
 
-      particleFilter = new ParticleFilter(coMap.response.map);
+      particleFilter = new ParticleFilter(coMap.response.map, 0.95, 60);
 /*      
       testVector[0].pose.pose.position.y = 0.1; // OK counterclock
       testVector[0].pose.pose.position.x = 0;
@@ -191,7 +191,7 @@ void odomCallback(Odometry odom)
       testInit.pose.pose.position.x = 0;
       testInit.pose.pose.position.y = 0;
       
-      particleFilter->initialize(100, testInit);
+      particleFilter->initialize(20, testInit);
       
 //      particleFilter->initialize(10, odom);
       debugIndex = 0;

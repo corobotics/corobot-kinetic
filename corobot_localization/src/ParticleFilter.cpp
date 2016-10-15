@@ -1,11 +1,18 @@
 #include "ParticleFilter.h"
 
 #include <ros/ros.h>
-#include <math.h>
 
-ParticleFilter::ParticleFilter(OccupancyGrid & map) :
+#include <algorithm>
+#include <cstdlib>
+#include <math.h>
+#include <vector>
+
+ParticleFilter::ParticleFilter(OccupancyGrid & map, float resamplePercentage, int orientationRangeDeg) :
 mNumOpenSpaces(0),
-mNumParticles(0)
+mNumParticles(0),
+mResamplePercentage(resamplePercentage),
+mResampleThreshold(0),
+mOrientationRangeDeg(orientationRangeDeg)
 {
    mMap = map;
    int index = 0;
@@ -28,6 +35,7 @@ mNumParticles(0)
       }
    }
    
+   
    ROS_INFO("ParticleFilter::ParticleFilter mNumOpenSpaces %d\n", mNumOpenSpaces);
    ROS_INFO("ParticleFilter::ParticleFilter numClosedSpaces %d\n", numClosedSpaces);
    
@@ -44,9 +52,15 @@ bool ParticleFilter::initialize(int numParticles, Odometry& startingOdometry)
    Particle particle;
    int index = 0;
    
+
+   
+   // Distribute the particles evenly.
    if (mNumParticles != numParticles)
    {
       mNumParticles = numParticles;
+      
+      // Set the resample threshold.
+      mResampleThreshold = mNumParticles * mResamplePercentage;
    }
    
    int spacesPerParticle = mNumOpenSpaces / numParticles;
@@ -79,6 +93,9 @@ bool ParticleFilter::initialize(int numParticles, Odometry& startingOdometry)
                   particle.pose.theta -= 2 * M_PI;
                }
                
+               // The weight is always 0 since we don't know if the particle is remotely true.
+               particle.weight = 0;
+               
                mParticles.push_back (particle);
             }
             
@@ -108,6 +125,116 @@ Pose ParticleFilter::OdomToPose(Odometry& odom)
    pose.theta = atan2(2 * qw * qz, 1 - 2 * pow(qz, 2));
    
    return pose;
+}
+
+void ParticleFilter::resample()
+{
+   std::vector <float> cumsums;
+   std::vector <float> randomNums;
+   ParticleList newParticles;
+   Particle particle;
+   int i = 0;
+   int j = 0;
+   float cumWeight = 0;
+   bool changeOrientation = false;
+   double temp = 0;
+
+   
+   ROS_INFO("PFLocalizationNode::%s called\n", __func__);
+   // first write the test code since we need it.
+   // Initialize the weights to values [0..1]
+   for(ParticleFilter::ParticleList::iterator it = mParticles.begin(); it != mParticles.end(); ++it)
+   {
+      it->weight = ((float)(rand() % 1000) / 1000);
+   }
+   // end of test code.
+
+   // Just calculate the cumulative weight.
+   for(ParticleFilter::ParticleList::iterator it = mParticles.begin(); it != mParticles.end(); ++it)
+   {
+//         it->weight = ((it->weight - minWeight)/weightRange);
+      //ROS_INFO("PFLocalizationNode::%s called normalized it->weight %f\n", __func__, it->weight);
+      
+      // Now that things are normalized lets generate our cumsum vector;
+      cumWeight += it->weight;
+      cumsums.push_back(cumWeight);
+   }
+   
+   for(int i = 0; i < mNumParticles + 1; ++i)
+   {
+      randomNums.push_back(((float)(rand() % 1000) / 1000));
+   }
+   
+   
+   std::sort (randomNums.begin(), randomNums.end());
+
+   ParticleFilter::ParticleList::iterator it = mParticles.begin();
+   while (i < mNumParticles)
+   {
+      if(randomNums[i] < (cumsums[j] / cumWeight))
+      {
+         if(changeOrientation == true)
+         {
+            // make a deep copy of the particle and changed the orientation.
+            particle = (*it);
+            
+            temp = rand() % mOrientationRangeDeg;
+            temp -= (mOrientationRangeDeg / 2);
+            temp *= (M_PI/180);
+            
+            
+            particle.pose.theta += temp;
+
+            if (particle.pose.theta > M_PI)
+            {
+               // Counterclockwise
+               particle.pose.theta -= 2 * M_PI;
+              
+            }
+            else if (particle.pose.theta < -M_PI)
+            {
+               // Clockwise
+               particle.pose.theta += 2 * M_PI;  
+            }            
+            
+            newParticles.push_back(particle);
+         }
+         else
+         {
+            newParticles.push_back(*it);
+         }
+         ++i;
+         // The first copy is an exact copy of the origional.  The other
+         // particles will have changed orientations.
+         changeOrientation = true;
+      }
+      else
+      {
+         ++j;
+         if(it != mParticles.end())
+         {
+            ++it;
+         }
+         changeOrientation = false;
+      }
+   }
+   
+   ROS_INFO("PFLocalizationNode::%s newParticles %lu mNumParticles = %d\n", __func__, newParticles.size(), mNumParticles);  
+   
+   // Debug code
+   for(ParticleFilter::ParticleList::iterator it = mParticles.begin(); it != mParticles.end(); ++it)
+   {
+      ROS_INFO("PFLocalizationNode::%s mParticles x = %f y = %f weight = %f theta = %f\n", __func__, it->pose.x, it->pose.y, it->weight, it->pose.theta);  
+   }
+   
+   for(ParticleFilter::ParticleList::iterator it = newParticles.begin(); it != newParticles.end(); ++it)
+   {
+      ROS_INFO("PFLocalizationNode::%s newParticles x = %f y = %f weight = %f theta = %f \n", __func__, it->pose.x, it->pose.y, it->weight, it->pose.theta); 
+   }
+   
+
+   // This is our new list of particles;
+   mParticles = newParticles;
 }
 
 void ParticleFilter::updateParticlePositions(Odometry& odom)
@@ -202,7 +329,11 @@ void ParticleFilter::updateParticlePositions(Odometry& odom)
 //         ROS_INFO("PFLocalizationNode::%s it->pose x = %f, y = %f, theta = %f\n", __func__, it->pose.x, it->pose.y it->pose.theta);
    }
    
-   // Now that we've updated the postions check to see if any of the particles crashed into a wall and remove them from the list.
+   // Check to see if we need to resample;
+   if (mParticles.size() < mResampleThreshold)
+   {
+      resample();
+   }
    
    mLastPose = currentPose;
 }

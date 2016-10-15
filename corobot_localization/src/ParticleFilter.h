@@ -18,6 +18,7 @@ using corobot_common::Pose;
 typedef struct {
    int particleId;
    Pose pose;
+   float weight;
 } Particle;
 
 
@@ -28,7 +29,7 @@ class ParticleFilter
       
       typedef std::list<Particle> ParticleList;
    
-      ParticleFilter(OccupancyGrid & map);
+      ParticleFilter(OccupancyGrid & map, float resamplePercentage, int orientationRangeDeg);
    
       virtual ~ParticleFilter();
       
@@ -44,6 +45,11 @@ class ParticleFilter
    
       // This is a port of odom_to_pose in utils.py
       Pose OdomToPose(Odometry& odom);
+      
+      // This function the repopulates the pool of particles particles when the 
+      // population drops below a certain threshold.
+      void resample();
+      
       Pose mLastPose;
    
       OccupancyGrid mMap;
@@ -52,6 +58,11 @@ class ParticleFilter
       
       int mNumOpenSpaces;
       int mNumParticles;
+      
+      int mOrientationRangeDeg;
+      float mResamplePercentage;
+      unsigned int mResampleThreshold;
+
    
 };
 
