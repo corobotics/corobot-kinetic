@@ -1,12 +1,15 @@
 #include <ros/ros.h>
 #include <ros/types.h>
+#include <geometry_msgs/Point.h>
 #include <nav_msgs/Odometry.h>
 
-#include "geometry_msgs/Point.h"
+#include <mutex>
 
 #include "corobot_common/GetCoMap.h"
 #include "corobot_common/Pose.h"
 #include "corobot_common/PoseArray.h"
+
+
 
 #include "ParticleFilter.h"
 
@@ -33,10 +36,13 @@ typedef enum {
 } ParticleFilterState;
 
 // if we recieve a goal we start running the particle filter. 
-bool recievedNewGoal = true;
 ParticleFilterState particleFilterState = STOPPED;
+static unsigned int debugIndex = 0;
+
 
 Odometry testVector[8];
+
+std::mutex PFLocMutex;
 
 int main(int argc, char **argv)
 {
@@ -78,8 +84,8 @@ int main(int argc, char **argv)
    * away the oldest ones.
    */
 
-   ros::Subscriber sub = n.subscribe("odom", 10, odomCallback);
-   ros::Subscriber goal = n.subscribe("goals", 1, goalCallback);
+   ros::Subscriber odomSub = n.subscribe("odom", 10, odomCallback);
+   ros::Subscriber goalSub = n.subscribe("goals_nav", 1, goalCallback);
    
    particlePublisher = n.advertise<corobot_common::PoseArray>("particleList", 1);;
 
@@ -174,20 +180,16 @@ int main(int argc, char **argv)
 
 void goalCallback(Point goal)
 {
-   recievedNewGoal = true; 
-}
-
-void odomCallback(Odometry odom)
-{
-   static unsigned int debugIndex;
-   double x_m = odom.pose.pose.position.x;
-   double y_m = odom.pose.pose.position.y;
-   double z_m = 0;
-   ROS_INFO("odomCallback called x = %f, y = %f\n", x_m, y_m);
-   
-   // If we recieved a new goal reinitialze the particle filter.
-   if(recievedNewGoal == true && particleFilterState == IDLE)
+   ROS_INFO("goalCallback called x = %f, y = %f\n", goal.x, goal.y);
+      // If we recieved a new goal reinitialze the particle filter.
+   if(particleFilterState == IDLE || particleFilterState == RUNNING)
    {
+     
+      
+      particleFilterState = INITIALIZING;
+      
+      PFLocMutex.lock();
+
       Odometry testInit;
       testInit.pose.pose.position.x = 0;
       testInit.pose.pose.position.y = 0;
@@ -196,16 +198,34 @@ void odomCallback(Odometry odom)
       
 //      particleFilter->initialize(10, odom);
       debugIndex = 0;
-      recievedNewGoal = false;
+      
+      PFLocMutex.unlock();      
             
       ROS_INFO("PFLocalizationNode::%s initialization completed\n", __func__);
  
       particleFilterState = RUNNING;
+
+   } 
+   else
+   {
+      ROS_INFO("odomCallback ERROR: recieved a new goal when in state %d\n", particleFilterState);
    }
-else if (particleFilterState == RUNNING)
+}
+
+void odomCallback(Odometry odom)
+{
+   double x_m = odom.pose.pose.position.x;
+   double y_m = odom.pose.pose.position.y;
+   double z_m = 0;
+//   ROS_INFO("odomCallback called x = %f, y = %f\n", x_m, y_m);
+   
+
+   if (particleFilterState == RUNNING)
    {
       particleFilterState = PROCESSINGODOM;
 
+      PFLocMutex.lock();
+      
       PoseArray particles; 
 
       ROS_INFO("PFLocalizationNode::%s updateParticlePositions start\n", __func__); 
@@ -216,19 +236,19 @@ else if (particleFilterState == RUNNING)
       ++debugIndex;
 
       ParticleFilter::ParticleList& results = particleFilter->getParticleList();
-
-  
-
+      
       for (ParticleFilter::ParticleList::iterator it=results.begin(); it != results.end(); ++it)
       {
 //         ROS_INFO("PFLocalizationNode::%s it->pose x = %f, y = %f\n", __func__, it->pose.x, it->pose.y);
          particles.poses.push_back((it->pose));
       }
-
+      
+       ROS_INFO("PFLocalizationNode::%s particles = %lu\n", __func__, particles.poses.size());
+      
       particlePublisher.publish(particles);
       
-
-            
+      PFLocMutex.unlock();  
+                  
       particleFilterState = RUNNING;
    }
 }
