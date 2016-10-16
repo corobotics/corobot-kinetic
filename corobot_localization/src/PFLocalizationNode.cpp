@@ -2,16 +2,17 @@
 #include <ros/types.h>
 #include <nav_msgs/Odometry.h>
 
+#include "geometry_msgs/Point.h"
+
 #include "corobot_common/GetCoMap.h"
-#include "corobot_common/Goal.h"
 #include "corobot_common/Pose.h"
 #include "corobot_common/PoseArray.h"
 
 #include "ParticleFilter.h"
 
 using namespace ros;
+using geometry_msgs::Point;
 using nav_msgs::Odometry;
-using corobot_common::Goal;
 using corobot_common::Pose;
 using corobot_common::PoseArray;
 
@@ -19,7 +20,7 @@ ros::Publisher particlePublisher;
 ParticleFilter* particleFilter = NULL;
 
 void odomCallback(Odometry odom);
-void goalCallback(Goal goal);
+void goalCallback(Point goal);
 
 typedef enum {
   STOPPED,
@@ -171,7 +172,7 @@ int main(int argc, char **argv)
    ros::spin();
 }
 
-void goalCallback(Goal goal)
+void goalCallback(Point goal)
 {
    recievedNewGoal = true; 
 }
@@ -191,7 +192,7 @@ void odomCallback(Odometry odom)
       testInit.pose.pose.position.x = 0;
       testInit.pose.pose.position.y = 0;
       
-      particleFilter->initialize(200, testInit);
+      particleFilter->initialize(20, testInit);
       
 //      particleFilter->initialize(10, odom);
       debugIndex = 0;
