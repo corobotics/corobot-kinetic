@@ -14,6 +14,7 @@ mResamplePercentage(resamplePercentage),
 mResampleThreshold(0),
 mOrientationRangeDeg(orientationRangeDeg)
 {
+   const float roombaRadiusm = 0.36/2;
    mMap = map;
    int index = 0;
    int numClosedSpaces = 0;
@@ -35,6 +36,7 @@ mOrientationRangeDeg(orientationRangeDeg)
       }
    }
    
+   mRoombaRadiusPixels = (roombaRadiusm / mMap.info.resolution);
    
    ROS_INFO("ParticleFilter::ParticleFilter mNumOpenSpaces %d\n", mNumOpenSpaces);
    ROS_INFO("ParticleFilter::ParticleFilter numClosedSpaces %d\n", numClosedSpaces);
@@ -67,7 +69,7 @@ bool ParticleFilter::initialize(int numParticles, Odometry& startingOdometry)
    
    mParticles.clear();
    
-   ROS_INFO("ParticleFilter::ParticleFilter mMap.info.resolution %f\n", mMap.info.resolution);
+//   ROS_INFO("ParticleFilter::ParticleFilter mMap.info.resolution %f\n", mMap.info.resolution);
    
    for(uint32_t y = 0; y < mMap.info.height; ++y)
    {
@@ -219,9 +221,11 @@ void ParticleFilter::resample()
       }
    }
    
+      // Debug code
+/*
    ROS_INFO("PFLocalizationNode::%s newParticles %lu mNumParticles = %d\n", __func__, newParticles.size(), mNumParticles);  
    
-   // Debug code
+
    for(ParticleFilter::ParticleList::iterator it = mParticles.begin(); it != mParticles.end(); ++it)
    {
       ROS_INFO("PFLocalizationNode::%s mParticles x = %f y = %f weight = %f theta = %f\n", __func__, it->pose.x, it->pose.y, it->weight, it->pose.theta);  
@@ -232,7 +236,7 @@ void ParticleFilter::resample()
       ROS_INFO("PFLocalizationNode::%s newParticles x = %f y = %f weight = %f theta = %f \n", __func__, it->pose.x, it->pose.y, it->weight, it->pose.theta); 
    }
    
-
+*/
    // This is our new list of particles;
    mParticles = newParticles;
 }
@@ -249,8 +253,8 @@ void ParticleFilter::updateParticlePositions(Odometry& odom)
    
    currentPose = OdomToPose(odom);
    
-   ROS_INFO("PFLocalizationNode::%s currentPose.x %f  currentPose.y %f currentPose.theta %f\n", __func__, currentPose.x, currentPose.y, currentPose.theta);
-   ROS_INFO("PFLocalizationNode::%s mLastPose.x %f  mLastPose.y %f mLastPose.theta %f\n", __func__, mLastPose.x, mLastPose.y, mLastPose.theta);
+//   ROS_INFO("PFLocalizationNode::%s currentPose.x %f  currentPose.y %f currentPose.theta %f\n", __func__, currentPose.x, currentPose.y, currentPose.theta);
+//   ROS_INFO("PFLocalizationNode::%s mLastPose.x %f  mLastPose.y %f mLastPose.theta %f\n", __func__, mLastPose.x, mLastPose.y, mLastPose.theta);
    
    diffPose.x = currentPose.x - mLastPose.x;
    diffPose.y = currentPose.y - mLastPose.y;
@@ -268,26 +272,26 @@ void ParticleFilter::updateParticlePositions(Odometry& odom)
       diffPose.theta += 2 * M_PI;  
    }
    
-   ROS_INFO("PFLocalizationNode::%s diffPose.x %f  diffPose.y %f\n", __func__, diffPose.x, diffPose.y);
+//   ROS_INFO("PFLocalizationNode::%s diffPose.x %f  diffPose.y %f\n", __func__, diffPose.x, diffPose.y);
    
    if(diffPose.x != 0 || diffPose.y != 0)
    {
       alpha = atan2 (diffPose.y, diffPose.x) + mLastPose.theta;
    }
    
-   ROS_INFO("PFLocalizationNode::%s alpha %f\n", __func__, alpha);
+//   ROS_INFO("PFLocalizationNode::%s alpha %f\n", __func__, alpha);
    
    // Calculate rho!
    rho = sqrt((pow(diffPose.x, 2) + pow(diffPose.y, 2)));
    
-   ROS_INFO("PFLocalizationNode::%s rho %f\n", __func__, rho);
+//   ROS_INFO("PFLocalizationNode::%s rho %f\n", __func__, rho);
    
    // Update the particle positions
    ParticleFilter::ParticleList::iterator it = mParticles.begin();
    while ( it != mParticles.end())
    {
 
-      ROS_INFO("PFLocalizationNode::%s it->pose.theta %f\n", __func__, it->pose.theta);
+//      ROS_INFO("PFLocalizationNode::%s it->pose.theta %f\n", __func__, it->pose.theta);
       
       // Now that we're facing the "correct" direction up date the x and y coordinates.
       it->pose.x = it->pose.x + rho * cos( it->pose.theta + alpha);
@@ -306,20 +310,26 @@ void ParticleFilter::updateParticlePositions(Odometry& odom)
          it->pose.theta += 2 * M_PI;  
       }
       
-      ROS_INFO("PFLocalizationNode::%s it->pose.x %f, it->pose.y %f, it->pose.theta %f\n", __func__, it->pose.x, it->pose.y , it->pose.theta);
+//      ROS_INFO("PFLocalizationNode::%s it->pose.x %f, it->pose.y %f, it->pose.theta %f\n", __func__, it->pose.x, it->pose.y , it->pose.theta);
       
       // check to see if we crashed into a wall. If we did the particle is false so
       // kill it.
       
       mapPosx = it->pose.x / mMap.info.resolution;
       mapPosy = it->pose.y / mMap.info.resolution;
-      
       index = mapPosx + (mapPosy * mMap.info.width);
 
-      if (mMap.data[index] != 0)
+      // Check to make sure that the particle has not gone off the map
+      if( mapPosx < mRoombaRadiusPixels || mapPosx > (mMap.info.width - mRoombaRadiusPixels) ||
+          mapPosy < mRoombaRadiusPixels || mapPosy > (mMap.info.height - mRoombaRadiusPixels))
+      {
+//          ROS_INFO("PFLocalizationNode::%s erasing it->pose.theta %f (off the map)\n", __func__, it->pose.theta);
+          it = mParticles.erase(it);
+      }
+      else if (mMap.data[index] != 0)
       {
           uint8_t temp = mMap.data[index];
-          ROS_INFO("PFLocalizationNode::%s erasing it->pose.theta %f mapdata = %d\n", __func__, it->pose.theta, temp);
+//          ROS_INFO("PFLocalizationNode::%s erasing it->pose.theta %f mapdata = %d\n", __func__, it->pose.theta, temp);
           it = mParticles.erase(it);
       }
       else

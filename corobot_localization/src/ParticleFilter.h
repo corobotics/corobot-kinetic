@@ -62,6 +62,8 @@ class ParticleFilter
       int mOrientationRangeDeg;
       float mResamplePercentage;
       unsigned int mResampleThreshold;
+      
+      uint32_t mRoombaRadiusPixels;
 
    
 };

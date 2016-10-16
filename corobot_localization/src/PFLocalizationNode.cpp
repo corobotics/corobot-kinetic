@@ -93,7 +93,7 @@ int main(int argc, char **argv)
 //      ROS_INFO("coMap.response.map.info.height %d!\n", coMap.response.map.info.height);
 //      ROS_INFO("coMap.response.map.info.width %d!\n", coMap.response.map.info.width);
 
-      particleFilter = new ParticleFilter(coMap.response.map, 0.95, 60);
+      particleFilter = new ParticleFilter(coMap.response.map, 0.5, 60);
 /*      
       testVector[0].pose.pose.position.y = 0.1; // OK counterclock
       testVector[0].pose.pose.position.x = 0;
@@ -191,7 +191,7 @@ void odomCallback(Odometry odom)
       testInit.pose.pose.position.x = 0;
       testInit.pose.pose.position.y = 0;
       
-      particleFilter->initialize(20, testInit);
+      particleFilter->initialize(200, testInit);
       
 //      particleFilter->initialize(10, odom);
       debugIndex = 0;
@@ -207,13 +207,16 @@ else if (particleFilterState == RUNNING)
 
       PoseArray particles; 
 
+      ROS_INFO("PFLocalizationNode::%s updateParticlePositions start\n", __func__); 
       particleFilter->updateParticlePositions(testVector[(debugIndex % 8)]);
+      ROS_INFO("PFLocalizationNode::%s updateParticlePositions start\n", __func__);
+            
 //    particleFilter->updateParticlePositions(odom);
       ++debugIndex;
 
       ParticleFilter::ParticleList& results = particleFilter->getParticleList();
 
-      ROS_INFO("PFLocalizationNode::%s results.size = %lu\n", __func__, results.size());   
+  
 
       for (ParticleFilter::ParticleList::iterator it=results.begin(); it != results.end(); ++it)
       {
@@ -223,6 +226,8 @@ else if (particleFilterState == RUNNING)
 
       particlePublisher.publish(particles);
       
+
+            
       particleFilterState = RUNNING;
    }
 }
