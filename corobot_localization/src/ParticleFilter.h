@@ -33,7 +33,7 @@ class ParticleFilter
    
       virtual ~ParticleFilter();
       
-      bool initialize (int numParticles, Odometry& startingOdometry);
+      bool initialize (int numParticles);
      
       int getNumParticles() {return mNumParticles;}
       
@@ -64,6 +64,7 @@ class ParticleFilter
       unsigned int mResampleThreshold;
       
       uint32_t mRoombaRadiusPixels;
+      bool mInitialized; 
 
    
 };
