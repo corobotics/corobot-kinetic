@@ -25,11 +25,14 @@ using namespace message_filters;
 #define MAX_X 1200
 #define MAX_Z 1200
 
-Mat prevImage;
+Mat prevImageRGB;
+Mat prevImageDepth;
 Mat R_f, t_f; //the final rotation and tranlation vectors
 
 // focal length of the camera
 double focal = 2.9;
+
+int cnt = 0;
 
 // principle point of the camera
 // TO BE UPDATED
@@ -69,9 +72,37 @@ void featureDetection(Mat img_1, vector<Point2f>& points1)
     KeyPoint::convert(keypoints_1, points1, vector<int>());
 }  
 
+string type2str(int type) {
+  string r;
+
+  uchar depth = type & CV_MAT_DEPTH_MASK;
+  uchar chans = 1 + (type >> CV_CN_SHIFT);
+
+  switch ( depth ) {
+    case CV_8U:  r = "8U"; break;
+    case CV_8S:  r = "8S"; break;
+    case CV_16U: r = "16U"; break;
+    case CV_16S: r = "16S"; break;
+    case CV_32S: r = "32S"; break;
+    case CV_32F: r = "32F"; break;
+    case CV_64F: r = "64F"; break;
+    default:     r = "User"; break;
+  }
+
+  r += "C";
+  r += (chans+'0');
+
+  return r;
+}
+
 // Handler / callback
 void callback(const sensor_msgs::ImageConstPtr& msg_rgb , const sensor_msgs::ImageConstPtr& msg_depth)
 {
+    cnt++;
+    if(cnt%30 != 0)
+    {
+        return;    
+    }
     cv_bridge::CvImagePtr img_ptr_rgb;
     cv_bridge::CvImagePtr img_ptr_depth;
 
@@ -95,21 +126,26 @@ void callback(const sensor_msgs::ImageConstPtr& msg_rgb , const sensor_msgs::Ima
         return;
     }
 
-    Mat& mat_depth = img_ptr_depth->image;
-    Mat& mat_rgb = img_ptr_rgb->image;
+    Rect myROI(0,105,590,375);
 
-    vector<int> png_parameters;
-    png_parameters.push_back(CV_IMWRITE_PNG_COMPRESSION);
+    Mat& imageDepth = img_ptr_depth->image;
+    Mat& imageRGB = img_ptr_rgb->image;
+
+    Mat currImageDepth(imageDepth,myROI);
+    Mat currImageRGB(imageRGB,myROI);
+
+    //vector<int> png_parameters;
+    //png_parameters.push_back(CV_IMWRITE_PNG_COMPRESSION);
     
-    Mat currImage = mat_rgb;
-   
-    //cv::imwrite("image" + to_string(cnt) + ".PNG",currImage,png_parameters);
+    //imwrite("oimage" + to_string(cnt) + ".PNG",imageRGB,png_parameters);  
+    //imwrite("image" + to_string(cnt) + ".PNG",currImageRGB,png_parameters);
     //cnt++;
-    
+
     // if this is first image store it and go to next iteration
     if(state == boot)    
     {
-        prevImage = currImage.clone();
+        prevImageRGB = currImageRGB.clone();
+        prevImageDepth = currImageDepth.clone();
         state = init;
         return;
     }    
@@ -119,21 +155,47 @@ void callback(const sensor_msgs::ImageConstPtr& msg_rgb , const sensor_msgs::Ima
     vector<Point2f> currFeatures;
     vector<Point2f> prevFeatures;
         
-    featureDetection(prevImage, prevFeatures);
-    featureTracking(prevImage, currImage, prevFeatures, currFeatures, status);
+    featureDetection(prevImageRGB, prevFeatures);
+    featureTracking(prevImageRGB, currImageRGB, prevFeatures, currFeatures, status);
     
     // RANSAC Random sample consensus
     E = findEssentialMat(currFeatures, prevFeatures, focal, pp, RANSAC, 0.999, 1.0, mask);
-    recoverPose(E, currFeatures, prevFeatures, R, t, focal, pp, mask);
+    int tempo = recoverPose(E, currFeatures, prevFeatures, R, t, focal, pp, mask);
 
-    for(int i=0;i<status.size();i++)
+    // calculate centroid for prev and current image
+    double sumXPrev = 0, sumYPrev = 0, sumZPrev = 0;
+    double sumXCurr = 0, sumYCurr = 0, sumZCurr = 0;  
+    int count = 0;  
+
+    for(int i=0;i<mask.rows;i++)
     {
-        Point2f pt = currFeatures.at(i);
+        // mask 1 means inliers
+        if(1 ==  mask.at<uchar>(i,1))
+        {
+            // convert from mm to cm
+            sumZPrev += prevImageDepth.at<unsigned short>(prevFeatures.at(i)) / 100;
+            sumZCurr += currImageDepth.at<unsigned short>(currFeatures.at(i)) / 100;
+            count++;
+        }
+    }     
+    
+    double scale = (sumZPrev - sumZCurr) / count;
+    
+    // Currently threshold is set to 0    
+    if(scale < 0)
+    {
+        scale =0;
+    }
 
-        circle(mat_rgb,pt,2,CV_RGB(255,0,0),1);
-    }      
-  
-    //imshow("image",mat_rgb);
+    //Mat blur_img;
+    //double minVal, maxVal;
+    //minMaxLoc(img_ptr_depth->image, &minVal, &maxVal); //find minimum and maximum intensities
+    //Mat draw;
+    //img_ptr_depth->image.convertTo(blur_img, CV_8U, 255.0/(maxVal - minVal), -minVal * 255.0/(maxVal - minVal));
+
+    //imshow("imagergb",currImageRGB);
+    //imshow("imagedepth",currImageDepth);
+    //imshow("Blur", blur_img);    
     //waitKey(1);
 
     if(state == init)
@@ -144,18 +206,17 @@ void callback(const sensor_msgs::ImageConstPtr& msg_rgb , const sensor_msgs::Ima
     }
     else
     {
-        t_f = t_f + (R_f*t);
+        t_f = t_f + scale * (R_f*t);
         R_f = R*R_f;
     }
     
-    prevImage = currImage.clone();
+    prevImageRGB = currImageRGB.clone();
+    prevImageDepth = currImageDepth.clone();
         
     int myx = int(t_f.at<double>(0));
     int myz = int(t_f.at<double>(2));
 
-    ROS_INFO_STREAM("X = " << myx << "Y = " << myz);
-    
-    //ROS_INFO_STREAM("Rotational vector = " << R_f);
+    ROS_INFO_STREAM("X = " << myx << " Y = " << myz << " " << scale);
 }
 
 int main(int argc, char** argv)
@@ -164,8 +225,8 @@ int main(int argc, char** argv)
     ros::init(argc, argv, "optical_flow_node");
     ros::NodeHandle nh;
    
-    message_filters::Subscriber<sensor_msgs::Image> subscriber_depth( nh , "depth/image_raw" , 1 );
-    message_filters::Subscriber<sensor_msgs::Image> subscriber_rgb( nh , "rgb/image_raw" , 1 );
+    message_filters::Subscriber<sensor_msgs::Image> subscriber_depth( nh , "camera/depth/image_raw" , 1 );
+    message_filters::Subscriber<sensor_msgs::Image> subscriber_rgb( nh , "camera/rgb/image_raw" , 1 );
 
 
     typedef sync_policies::ApproximateTime<sensor_msgs::Image, sensor_msgs::Image> MySyncPolicy;
