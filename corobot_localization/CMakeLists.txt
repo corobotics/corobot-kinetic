@@ -119,6 +119,9 @@ include_directories(
   ${catkin_INCLUDE_DIRS}
 )
 
+## Add compiler flags 
+add_definitions(-std=c++11)
+
 ## Declare a C++ library
 # add_library(corobot_localization
 #   src/${PROJECT_NAME}/corobot_localization.cpp
