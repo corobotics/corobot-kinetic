@@ -84,7 +84,8 @@ int main(int argc, char **argv)
    * away the oldest ones.
    */
 
-   ros::Subscriber odomSub = n.subscribe("odom", 10, odomCallback);
+   //ros::Subscriber odomSub = n.subscribe("odom", 10, odomCallback);
+   ros::Subscriber odomSub = n.subscribe("todom", 10, odomCallback);
    ros::Subscriber goalSub = n.subscribe("goals_nav", 1, goalCallback);
    
    particlePublisher = n.advertise<corobot_common::PoseArray>("particleList", 1);;
@@ -190,11 +191,7 @@ void goalCallback(Point goal)
       
       PFLocMutex.lock();
 
-      Odometry testInit;
-      testInit.pose.pose.position.x = 0;
-      testInit.pose.pose.position.y = 0;
-      
-      particleFilter->initialize(20, testInit);
+      particleFilter->initialize(100);
       
 //      particleFilter->initialize(10, odom);
       debugIndex = 0;
@@ -214,38 +211,49 @@ void goalCallback(Point goal)
 
 void odomCallback(Odometry odom)
 {
+   static bool sendParticles = false;
+   
    double x_m = odom.pose.pose.position.x;
    double y_m = odom.pose.pose.position.y;
    double z_m = 0;
-//   ROS_INFO("odomCallback called x = %f, y = %f\n", x_m, y_m);
+  
    
 
    if (particleFilterState == RUNNING)
    {
       particleFilterState = PROCESSINGODOM;
-
+      ROS_INFO("PFLocalizationNode::%s PROCESSINGODOM x = %f, y = %f\n", __func__, x_m, y_m); 
       PFLocMutex.lock();
       
       PoseArray particles; 
 
-      ROS_INFO("PFLocalizationNode::%s updateParticlePositions start\n", __func__); 
-      particleFilter->updateParticlePositions(testVector[(debugIndex % 8)]);
-      ROS_INFO("PFLocalizationNode::%s updateParticlePositions start\n", __func__);
+ //     ROS_INFO("PFLocalizationNode::%s updateParticlePositions start\n", __func__); 
+//      particleFilter->updateParticlePositions(testVector[(debugIndex % 8)]);
+      particleFilter->updateParticlePositions(odom);
+ //     ROS_INFO("PFLocalizationNode::%s updateParticlePositions end\n", __func__);
             
-//    particleFilter->updateParticlePositions(odom);
-      ++debugIndex;
 
-      ParticleFilter::ParticleList& results = particleFilter->getParticleList();
-      
-      for (ParticleFilter::ParticleList::iterator it=results.begin(); it != results.end(); ++it)
+      ++debugIndex;
+      if(sendParticles)
       {
-//         ROS_INFO("PFLocalizationNode::%s it->pose x = %f, y = %f\n", __func__, it->pose.x, it->pose.y);
-         particles.poses.push_back((it->pose));
+         ParticleFilter::ParticleList& results = particleFilter->getParticleList();
+         
+         for (ParticleFilter::ParticleList::iterator it=results.begin(); it != results.end(); ++it)
+         {
+   //         ROS_INFO("PFLocalizationNode::%s it->pose x = %f, y = %f\n", __func__, it->pose.x, it->pose.y);
+            particles.poses.push_back((it->pose));
+         }
+         
+          ROS_INFO("PFLocalizationNode::%s particles = %lu\n", __func__, particles.poses.size());
+         
+         particlePublisher.publish(particles);
+         
+         sendParticles = false;
       }
-      
-       ROS_INFO("PFLocalizationNode::%s particles = %lu\n", __func__, particles.poses.size());
-      
-      particlePublisher.publish(particles);
+      else
+      {
+         sendParticles = true;
+      }
       
       PFLocMutex.unlock();  
                   

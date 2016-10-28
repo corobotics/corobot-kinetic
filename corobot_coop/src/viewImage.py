@@ -49,7 +49,8 @@ class ImageViewer():
 		print e
 	    gray_image = cv2.cvtColor(cv_image, cv2.COLOR_BGR2GRAY)
 	    edges = cv2.Canny(gray_image, 100, 200)
-	    circles = cv2.HoughCircles( edges, cv2.HOUGH_GRADIENT, 1, 10, 100, 50, 1, 5 )
+	    circles = cv2.HoughCircles( edges, cv2.HOUGH_GRADIENT, 1, 20, 100, 50, 5, 10 )
+	    output = cv_image.copy()
 	    if circles is not None:
 		circles = np.round(circles[0, :]).astype("int")[:7]
 		for i in range(len(circles)):
@@ -65,17 +66,18 @@ class ImageViewer():
 			colorstring = ""
 			robot = sorted(robot[:3], key = lambda x: x[0] )
 			for (rx, ry, rr) in robot:
-		            #cv2.circle(cv_image, (rx,ry), rr, (0, 255, 0), 1)
-		            #cv2.circle(cv_image, (rx,ry), 1, (255, 0, 0), 1)
+		            cv2.circle(output, (rx,ry), rr, (0, 255, 0), 1)
+		            cv2.circle(output, (rx,ry), 1, (255, 0, 0), 1)
 			    #cv2.putText(cv_image, self.getColor(rx, ry, rr, cv_image), (rx, ry), cv2.FONT_HERSHEY_PLAIN, 1, (255, 255, 255))
 			    colorstring += self.getColor(rx, ry, rr, cv_image)
 			if "W" in colorstring:
 			    break
 			phi_obs = self.seq.index(colorstring[:2]) * np.pi / 8.0
-			
+			print phi_obs, colorstring[:2]
 			d = scan.ranges[max(len(scan.ranges) - robot[0][0] - 10, 0): min(len(scan.ranges) - robot[0][0]+10, len(scan.ranges))]
 			d = np.nanmean(d)
 			if np.isnan(d):
+			    print( 'No Object Observed in this direction' )
 			    break
 			camang = scan.angle_min + (len(scan.ranges) - robot[0][0]) * scan.angle_increment
 			px = pos.position.x
@@ -92,18 +94,18 @@ class ImageViewer():
 			print ("THEM: ")
 			print (ox, oy, otheta)
 			break	
-	
-	    cv2.imshow( "Test", cv_image)
+	    cv2.imshow( "Test", output)
 	    cv2.waitKey(3)
 
     def getColor(self, x, y, radius, image ):
 	img_lab = cv2.cvtColor(image, cv2.COLOR_BGR2LAB)
-	colors = np.zeros((5, 1, 3), dtype = "uint8")
-	colors[0] = [100, 30, 20] #Red
-	colors[1] = [30, 40, 30] #Green
-	colors[2] = [30, 50, 80] #Blue
-	colors[3] = [20, 20, 20] #Black
-	colors[4] = [128, 128, 128] #White
+	colors = np.zeros((6, 1, 3), dtype = "uint8")
+	colors[0] = [150, 40, 50] #Red
+	colors[1] = [40, 70, 50] #Green
+	colors[2] = [40, 75, 130] #Blue
+	colors[3] = [30, 30, 30] #Black
+	colors[4] = [200, 200, 200] #White
+	colors[5] = [140, 140, 140] #Gray
 
 	lab = cv2.cvtColor(colors, cv2.COLOR_RGB2LAB)
 	minDist = (np.inf, "?")
