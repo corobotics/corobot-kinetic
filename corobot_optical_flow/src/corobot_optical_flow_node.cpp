@@ -134,12 +134,10 @@ void callback(const sensor_msgs::ImageConstPtr& msg_rgb , const sensor_msgs::Ima
     Mat currImageDepth(imageDepth,myROI);
     Mat currImageRGB(imageRGB,myROI);
 
-    //vector<int> png_parameters;
-    //png_parameters.push_back(CV_IMWRITE_PNG_COMPRESSION);
+    vector<int> png_parameters;
+    png_parameters.push_back(CV_IMWRITE_PNG_COMPRESSION);
     
-    //imwrite("oimage" + to_string(cnt) + ".PNG",imageRGB,png_parameters);  
-    //imwrite("image" + to_string(cnt) + ".PNG",currImageRGB,png_parameters);
-    //cnt++;
+   
 
     // if this is first image store it and go to next iteration
     if(state == boot)    
@@ -187,11 +185,17 @@ void callback(const sensor_msgs::ImageConstPtr& msg_rgb , const sensor_msgs::Ima
         scale =0;
     }
 
-    //Mat blur_img;
-    //double minVal, maxVal;
-    //minMaxLoc(img_ptr_depth->image, &minVal, &maxVal); //find minimum and maximum intensities
+    Mat blur_img,blur_imgc;
+    double minVal, maxVal;
+    minMaxLoc(img_ptr_depth->image, &minVal, &maxVal); //find minimum and maximum intensities
     //Mat draw;
-    //img_ptr_depth->image.convertTo(blur_img, CV_8U, 255.0/(maxVal - minVal), -minVal * 255.0/(maxVal - minVal));
+    img_ptr_depth->image.convertTo(blur_img, CV_8U, 255.0/(maxVal - minVal), -minVal * 255.0/(maxVal - minVal));
+    currImageDepth.convertTo(blur_imgc, CV_8U, 255.0/(maxVal - minVal), -minVal * 255.0/(maxVal - minVal));
+    imwrite("odimage" + to_string(cnt) + ".PNG",blur_img,png_parameters);  
+    imwrite("dimage" + to_string(cnt) + ".PNG",blur_imgc,png_parameters);
+    imwrite("orimage" + to_string(cnt) + ".PNG",imageRGB,png_parameters);  
+    imwrite("rimage" + to_string(cnt) + ".PNG",currImageRGB,png_parameters);
+    cnt++;
 
     //imshow("imagergb",currImageRGB);
     //imshow("imagedepth",currImageDepth);
