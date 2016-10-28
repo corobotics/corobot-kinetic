@@ -6,13 +6,13 @@ project(corobot_obstacle_avoidance)
 ## is used, also find other catkin packages
 find_package(catkin REQUIRED COMPONENTS
   corobot_common
-#  create_node
+  create_node
   geometry_msgs
   roscpp
   rospy
   sensor_msgs
 )
-
+find_package(PCL REQUIRED)
 ## System dependencies are found with CMake's conventions
 # find_package(Boost REQUIRED COMPONENTS system)
 
@@ -119,12 +119,13 @@ catkin_package(
 include_directories( include
   ${catkin_INCLUDE_DIRS}
 )
-
+include_directories(${PCL_INCLUDE_DIRS})
 ## Declare a C++ library
 # add_library(corobot_obstacle_avoidance
 #   src/${PROJECT_NAME}/corobot_obstacle_avoidance.cpp
 # )
-
+link_directories(${PCL_LIBRARY_DIRS})
+add_definitions(${PCL_DEFINITIONS})
 ## Add cmake target dependencies of the library
 ## as an example, code may need to be generated before libraries
 ## either from message generation or dynamic reconfigure
@@ -132,7 +133,7 @@ include_directories( include
 
 ## Declare a C++ executable
 add_executable(obstacle_avoidance src/obstacle_avoidance.cpp src/wall_detection.cpp src/apf.cpp)
-
+add_executable(obstacle_detection src/obstacle_detection.cpp)
 ## Add cmake target dependencies of the executable
 ## same as for the library above
 # add_dependencies(corobot_obstacle_avoidance_node ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
@@ -141,7 +142,10 @@ add_executable(obstacle_avoidance src/obstacle_avoidance.cpp src/wall_detection.
 target_link_libraries(obstacle_avoidance
   ${catkin_LIBRARIES}
 )
-
+target_link_libraries(obstacle_detection
+ ${catkin_LIBRARIES}
+ ${PCL_LIBRARY_DIRS}
+)
 #############
 ## Install ##
 #############
