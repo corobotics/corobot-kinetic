@@ -36,7 +36,7 @@ int cnt = 0;
 
 // principle point of the camera
 // TO BE UPDATED
-cv::Point2d pp(0,0);
+cv::Point2d pp(312.60,228.62);
 
 enum States
 {
@@ -177,7 +177,7 @@ void callback(const sensor_msgs::ImageConstPtr& msg_rgb , const sensor_msgs::Ima
         }
     }     
     
-    double scale = (sumZPrev - sumZCurr) / count;
+    double scale = 1;//(sumZPrev - sumZCurr) / count;
     
     // Currently threshold is set to 0    
     if(scale < 0)
@@ -189,18 +189,17 @@ void callback(const sensor_msgs::ImageConstPtr& msg_rgb , const sensor_msgs::Ima
     double minVal, maxVal;
     minMaxLoc(img_ptr_depth->image, &minVal, &maxVal); //find minimum and maximum intensities
     //Mat draw;
-    img_ptr_depth->image.convertTo(blur_img, CV_8U, 255.0/(maxVal - minVal), -minVal * 255.0/(maxVal - minVal));
-    currImageDepth.convertTo(blur_imgc, CV_8U, 255.0/(maxVal - minVal), -minVal * 255.0/(maxVal - minVal));
-    imwrite("odimage" + to_string(cnt) + ".PNG",blur_img,png_parameters);  
-    imwrite("dimage" + to_string(cnt) + ".PNG",blur_imgc,png_parameters);
-    imwrite("orimage" + to_string(cnt) + ".PNG",imageRGB,png_parameters);  
-    imwrite("rimage" + to_string(cnt) + ".PNG",currImageRGB,png_parameters);
+    //img_ptr_depth->image.convertTo(blur_img, CV_8U, 255.0/(maxVal - minVal), -minVal * 255.0/(maxVal - minVal));
+    //currImageDepth.convertTo(blur_imgc, CV_8U, 255.0/(maxVal - minVal), -minVal * 255.0/(maxVal - minVal));
+    //imwrite("odimage" + to_string(cnt) + ".PNG",blur_img,png_parameters);  
+    //imwrite("dimage" + to_string(cnt) + ".PNG",blur_imgc,png_parameters);
+    //imwrite("orimage" + to_string(cnt) + ".PNG",imageRGB,png_parameters);  
+    //imwrite("rimage" + to_string(cnt) + ".PNG",currImageRGB,png_parameters);
     cnt++;
 
-    //imshow("imagergb",currImageRGB);
-    //imshow("imagedepth",currImageDepth);
-    //imshow("Blur", blur_img);    
-    //waitKey(1);
+    //Mat zeros = Mat::zeros(currImageRGB.rows,currImageRGB.cols,CV_8UC3);    
+
+    
 
     if(state == init)
     {
@@ -217,10 +216,27 @@ void callback(const sensor_msgs::ImageConstPtr& msg_rgb , const sensor_msgs::Ima
     prevImageRGB = currImageRGB.clone();
     prevImageDepth = currImageDepth.clone();
         
+    for(int i=0;i<mask.rows;i++)
+    {
+        if(1 ==  mask.at<uchar>(i,1))
+        {
+            line(currImageRGB,prevFeatures.at(i),currFeatures.at(i),CV_RGB(255,0,0));
+        }
+    }
+
+    imshow("imagergb",currImageRGB);
+    //imshow("imagedepth",currImageDepth);
+    //imshow("Blur", blur_img);    
+    waitKey(1);
+    
     int myx = int(t_f.at<double>(0));
     int myz = int(t_f.at<double>(2));
+    
+    Mat mr,mq;
+    Vec3d angles = RQDecomp3x3(R_f,mr,mq);
 
-    ROS_INFO_STREAM("X = " << myx << " Y = " << myz << " " << scale);
+    ROS_INFO_STREAM(angles.t());
+    //ROS_INFO_STREAM("*X = " << myx << " Y = " << myz << " " << scale);
 }
 
 int main(int argc, char** argv)
