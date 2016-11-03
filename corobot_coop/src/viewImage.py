@@ -23,6 +23,8 @@ class ImageViewer():
 	self.pos = []
 	self.scan = []
 	self.seq = "RRGRBRKGGBGKBBKKR"
+	self.colorRecord = open('colors.txt', 'a+')
+
 
     def image_call(self, data):
 	self.images.append(data)
@@ -99,30 +101,44 @@ class ImageViewer():
 
     def getColor(self, x, y, radius, image ):
 	img_lab = cv2.cvtColor(image, cv2.COLOR_BGR2LAB)
-	colors = np.zeros((6, 1, 3), dtype = "uint8")
-	colors[0] = [150, 40, 50] #Red
-	colors[1] = [40, 70, 50] #Green
-	colors[2] = [40, 75, 130] #Blue
-	colors[3] = [30, 30, 30] #Black
-	colors[4] = [200, 200, 200] #White
-	colors[5] = [140, 140, 140] #Gray
+	colors = np.zeros((20, 1, 3), dtype = "uint8")
+	colors[0] = [92, 171, 154] #Red
+	colors[1] = [156, 144, 141] #Red
+	colors[2] = [109, 165, 149] #Red
+	colors[3] = [137, 152, 142] #Red
+	colors[4] = [66, 119, 135] #Green
+	colors[5] = [78, 118, 136] #Green
+	colors[6] = [72, 130, 111] #Blue
+	colors[7] = [98, 130, 110] #Blue
+	colors[8] = [37, 129, 129] #Black
+	colors[9] = [173, 130, 135] #White
+	colors[10] =  [108, 129, 131] #White
+	colors[11] = [150, 129, 140] #White?
+	colors[12] = [218, 128, 131] #White
+	colors[13] = [138, 128, 134] #White
+	colors[14] = [91, 126, 133] #White?
+	colors[15] = [199, 129, 133] #White
+	colors[16] = [65, 131, 130] #White? Could be black
+	colors[17] = [159, 128, 133]
+	colors[18] = [188, 130, 132]
+	colors[19] = [123, 128, 133]
 
-	lab = cv2.cvtColor(colors, cv2.COLOR_RGB2LAB)
 	minDist = (np.inf, "?")
-
+	lab = colors
 	mask = np.zeros(image.shape[:2], dtype="uint8")
 	cv2.circle( mask, (x, y), 5, 255, -1)
 	col = cv2.mean(img_lab, mask = mask)[:3]
+	self.colorRecord.write( str(col[0]) + " " + str(col[1]) + " "+ str(col[2]) + "\n" );
 	for i in range(len(lab)):
             dis = dist(col, lab[i][0].astype('double'))
 	    if minDist[0] > dis:
-		if i == 0:
+		if i >= 0 and i<= 3:
 		    minDist = (dis, "R")
-		elif i == 1:
+		elif i == 4 or i == 5:
 		    minDist = (dis, "G")
-		elif i == 2:
+		elif i == 6 or i == 7:
 		    minDist = (dis, "B")
-		elif i == 3:
+		elif i == 8:
 		    minDist = (dis, "K")
 		else:
 		    minDist = (dis, "W")
