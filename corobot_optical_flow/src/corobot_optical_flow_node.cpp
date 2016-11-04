@@ -59,17 +59,19 @@ void featureTracking(Mat img_1, Mat img_2, vector<Point2f>& points1, vector<Poin
     vector<float> err;
     Size winSize=Size(21,21);
     TermCriteria termcrit=TermCriteria(TermCriteria::COUNT+TermCriteria::EPS, 30, 0.01);
-    calcOpticalFlowPyrLK(img_1, img_2, points1, points2, status, err, winSize, 3, termcrit, 0, 0.001);
+    calcOpticalFlowPyrLK(img_1, img_2, points1, points2, status, err, winSize, 2, termcrit, 0, 0.001);
 }
 
 void featureDetection(Mat img_1, vector<Point2f>& points1)
 {
     vector<KeyPoint> keypoints_1;
-    int fast_threshold = 40;
+    int fast_threshold = 20;
     bool nonmaxSuppression = true;
-    // FAST (Features from Accelerated Segment Test) corner detector
+    //FAST (Features from Accelerated Segment Test) corner detector
     FAST(img_1, keypoints_1, fast_threshold, nonmaxSuppression);
     KeyPoint::convert(keypoints_1, points1, vector<int>());
+
+    //goodFeaturesToTrack(img_1, points1, 20, 0.05, 5.0, cv::Mat());    
 }  
 
 string type2str(int type) {
@@ -101,7 +103,7 @@ void callback(const sensor_msgs::ImageConstPtr& msg_rgb , const sensor_msgs::Ima
     cnt++;
     if(cnt%30 != 0)
     {
-        return;    
+    //    return;    
     }
     cv_bridge::CvImagePtr img_ptr_rgb;
     cv_bridge::CvImagePtr img_ptr_depth;
