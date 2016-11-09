@@ -8,6 +8,7 @@
 #include "pcl/features/organized_edge_detection.h"
 #include "pcl/features/integral_image_normal.h"
 #include <pcl/PCLHeader.h>
+#include <pcl/PointIndices.h>
 
 enum DrivingDirection {
     LEFT,
@@ -21,6 +22,7 @@ private:
     ros::NodeHandle nodeHandle;
     ros::Publisher groundDetect;
     ros::Publisher occlusion;
+//    ros::Publisher directionMove;
     DrivingDirection direction;  //direction of movement of robot
     DrivingDirection previousTurn; //previous move of the robot
     double previous_farY,previous_nearY,
@@ -33,22 +35,26 @@ public:
     ObstacleDetection(ros::NodeHandle nh):
             nodeHandle(nh),
             groundDetect(nodeHandle.advertise<sensor_msgs::PointCloud2>("groundPlane",1)),
+	    occlusion(nodeHandle.advertise<sensor_msgs::PointCloud2>("navigation",1)),
             direction(FORWARD), previous_farY(0), previous_nearY(0), previous_farZ(0), previous_nearZ(0) {
-	//ROS_INFO("Inside constructor ...");
-        ros::Subscriber groundPlaneEdge = nodeHandle.subscribe("/camera/depth/points", 1, &ObstacleDetection::groundPlaneDetection,this);
+	ROS_INFO("Inside constructor ..");
+        ros::Subscriber groundPlaneEdge = nodeHandle.subscribe("/camera/depth/points", 10, &ObstacleDetection::groundPlaneDetection, this);
+	ROS_INFO("Subscribed to PointCloud2 topic...");
         ros::spin();
     }
 
     void groundPlaneDetection(const sensor_msgs::PointCloud2ConstPtr& input){
 
+	ROS_INFO("Method call successful...");
         sensor_msgs::PointCloud2 cloud_pointer;
         sensor_msgs::PointCloud2 nav_pointer;
         pcl::PCLPointCloud2* cloud = new pcl::PCLPointCloud2;
-        pcl::PCLPointCloud2ConstPtr cloudPtr(cloud);
+//        pcl::PCLPointCloud2ConstPtr cloudPtr(cloud);
         pcl::PCLPointCloud2 cloud_filtered;
 
         pcl_conversions::toPCL(*input,*cloud);
-        pcl::PCLPointCloud2* points = new pcl::PCLPointCloud2;
+	pcl::PCLPointCloud2ConstPtr cloudPtr(cloud);  
+      	pcl::PCLPointCloud2* points = new pcl::PCLPointCloud2;
         pcl::PCLPointCloud2ConstPtr cloud_points(points);
 
         pcl::PCLPointCloud2* nav = new pcl::PCLPointCloud2;        
@@ -56,10 +62,10 @@ public:
         pcl::PCLPointCloud2 nav_filtered;
 
         pcl::PassThrough<pcl::PCLPointCloud2> passThrough;
-        pcl::OrganizedEdgeFromRGBNormals<pcl::PCLPointCloud2, pcl::Normal, pcl::Label> edgeDetection;
-        pcl::RadiusOutlierRemoval<pcl::PCLPointCloud2> outlierRemoval ;
+	pcl::OrganizedEdgeFromRGBNormals<pcl::PCLPointCloud2, pcl::Normal, pcl::Label> edgeDetection;
+	pcl::RadiusOutlierRemoval<pcl::PCLPointCloud2> outlierRemoval ;
 
-        pcl::PointCloud<pcl::Label> edgePoints;
+        pcl::PointCloud<pcl::Label> edgeLabels;
         std::vector<pcl::PointIndices> edges;
 
         double radiusAlongX, maxCropAlongZ, minCropAlongZ,
@@ -96,6 +102,7 @@ public:
         nodeHandle.getParamCached("outlierRadius", outlierRadius);
         nodeHandle.getParamCached("isGround", isGround);
 
+	ROS_INFO("Get params for nodeHandle success...");
 
         if(closeY!=previous_nearY || farY != previous_farY || closeZ!=previous_nearZ || farZ!=previous_farZ){
             double diffY, diffZ, sumY, sumZ;
@@ -103,7 +110,8 @@ public:
             diffZ = farZ - closeZ;
             sumY = closeY + farY;
             sumZ = closeZ + farZ;
-
+	
+	    ROS_INFO("Calculating slope and intercept");
             slope = diffY/diffZ;
             intercept = sumY/2 - slope * sumZ / 2;
 
@@ -113,6 +121,8 @@ public:
             previous_farZ = farZ;
         }
 
+	ROS_INFO("Passing cloud through passthrough filter");
+
         //Set the frame of reference on the ground points for X, Y and Z axis
         passThrough.setInputCloud(cloudPtr);
         passThrough.setFilterFieldName("x");
@@ -120,13 +130,13 @@ public:
         passThrough.setKeepOrganized(true);
         passThrough.filter(cloud_filtered);
 
-        passThrough.setInputCloud(cloud_points);
+        passThrough.setInputCloud(cloudPtr);
         passThrough.setFilterFieldName("y");
         passThrough.setFilterLimits(maxCropAlongY,1.0);
         passThrough.setKeepOrganized(true);
         passThrough.filter(cloud_filtered);
 
-        passThrough.setInputCloud(cloud_points);
+        passThrough.setInputCloud(cloudPtr);
         passThrough.setFilterFieldName("z");
         passThrough.setFilterLimits(minCropAlongZ, maxCropAlongZ + frontalBumper);
         passThrough.setKeepOrganized(true);
@@ -134,20 +144,27 @@ public:
 
 //	pcl::PointCloud<PointT> pointCloud;
 //      pcl::toPCLPointCloud2(pointCloud, cloud_points);
-	pcl::PointCloud<pcl::PointXYZ> input_cloud;
-        pcl::fromPCLPointCloud2(cloud_filtered, input_cloud);		
+
+	ROS_INFO("Calculating ground points");
+//	pcl::PointCloud<pcl::PointXYZ> input_cloud;
+//        pcl::fromPCLPointCloud2(cloud_filtered, input_cloud);		
+  
+	pcl::PointCloud<pcl::PointXYZ>::Ptr temp_cloud(new pcl::PointCloud<pcl::PointXYZ>);
+	pcl::fromPCLPointCloud2(cloud_filtered,*temp_cloud);
         for(pcl::PointCloud<pcl::PointXYZ>::iterator
-                    location = input_cloud.begin(); location < input_cloud.end(); location++){
+                    location = temp_cloud->begin(); location < temp_cloud->end(); location++){
 
-            double expectedYCoord = slope *  location->z + intercept;
+	    //ROS_INFO("Location cloud");        
+	    double expectedYCoord = slope *  location->z + intercept;
             double distanceFromGround = fabs(location->y - expectedYCoord);
-
-            // if the point detected is not anywhere close to the ground
-            if(distanceFromGround>roughToleranceLevel){
-                location->x = std::numeric_limits<float>::quiet_NaN();
-                location->y = std::numeric_limits<float>::quiet_NaN();
-                location->z = std::numeric_limits<float>::quiet_NaN();
-            }
+	
+	 //  ROS_INFO("Setting points to NaN if more than rough tolerance");
+           // if the point detected is not anywhere close to the ground
+ 	    if(distanceFromGround>roughToleranceLevel){
+               location->x = std::numeric_limits<float>::quiet_NaN();
+	       location->y = std::numeric_limits<float>::quiet_NaN();
+               location->z = std::numeric_limits<float>::quiet_NaN();
+      	    }
             else if( distanceFromGround<fineToleranceLevel &&
                     fabs(location->x) < (radiusAlongX - lateralBumper) &&
                     location->z > (closeZ + frontalBumper) &&
@@ -157,10 +174,14 @@ public:
                 totalGroundPoints+= location->x;
             }
         }
-
-        //find edges and eliminate the outliers from the ground plane detected.
-        if(groundPoints>0){
-            edgeDetection.setInputCloud(cloud_points);
+	
+	ROS_INFO("Detecting edges..");
+        if(groundPoints<=0){
+	    isGround = false;
+	}
+	//find edges and eliminate the outliers from the ground plane detected.
+       	if(groundPoints>0){
+            edgeDetection.setInputCloud(cloudPtr);
             edgeDetection.setEdgeType(edgeDetection.EDGELABEL_HIGH_CURVATURE +
                                       edgeDetection.EDGELABEL_NAN_BOUNDARY );
 
@@ -179,11 +200,16 @@ public:
             if(maxThreshold>=0){
                 edgeDetection.setHCCannyHighThreshold((float)maxThreshold);
             }
-	  
-
+	    edgeDetection.compute (edgeLabels,edges);   
+	
 	    pcl::PointCloud<pcl::PointXYZ> nav_input_cloud;
-	    nav_input_cloud.header = cloud_points->header;
+	    nav_input_cloud.header = cloud_filtered.header;
 
+	    pcl::toPCLPointCloud2(*temp_cloud, cloud_filtered);
+	    pcl::PointCloud<pcl::PointXYZ> input_cloud;
+            pcl::fromPCLPointCloud2(cloud_filtered, input_cloud);  
+	    
+	    ROS_INFO("Iterating through navigation cloud...");
             for(std::vector<pcl::PointIndices>:: iterator
                     edge=edges.begin(); edge < edges.end(); edge++){
 
@@ -251,8 +277,18 @@ public:
             previousTurn = totalGroundPoints/groundPoints > 0 ? RIGHT : LEFT;
         }
 
+	if(direction == LEFT){
+	    ROS_INFO("Turn Left");
+	}
+	else if(direction==RIGHT){
+	    ROS_INFO("Turn Right");
+	}
+	else{
+	    ROS_INFO("Move Forward");
+	}
         pcl_conversions::fromPCL(cloud_filtered, cloud_pointer);
         pcl_conversions::fromPCL(nav_filtered, nav_pointer);
+//	directionMove.publish(getEnumValue(direction).);
         groundDetect.publish(cloud_pointer);
         occlusion.publish(nav_pointer);
     }
@@ -282,11 +318,12 @@ int main(int argc, char** argv){
     node.setParam("lateralBumper", 0.01);
     node.setParam("normalSmoothing", -1.0);
     node.setParam("outlierRadius", 0.05);
-    node.setParam("isGround", true);
+    node.setParam("isGround", false);
 
-    //ROS_INFO("Calling constructor");
+    ROS_INFO("Calling constructor");
     ObstacleDetection obstacleDetect(node);
-
+//    ros::spin();
+    
     return (0);
 
 }

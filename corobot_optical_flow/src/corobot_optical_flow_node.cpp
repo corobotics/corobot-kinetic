@@ -7,6 +7,8 @@
 #include <opencv2/video/tracking.hpp>
 #include <opencv2/highgui/highgui.hpp>
 #include <opencv2/calib3d/calib3d.hpp>
+#include <opencv2/core/core.hpp>
+#include <opencv2/xfeatures2d.hpp>
 
 #include <message_filters/subscriber.h>
 #include <message_filters/synchronizer.h>
@@ -59,17 +61,21 @@ void featureTracking(Mat img_1, Mat img_2, vector<Point2f>& points1, vector<Poin
     vector<float> err;
     Size winSize=Size(21,21);
     TermCriteria termcrit=TermCriteria(TermCriteria::COUNT+TermCriteria::EPS, 30, 0.01);
-    calcOpticalFlowPyrLK(img_1, img_2, points1, points2, status, err, winSize, 3, termcrit, 0, 0.001);
+    calcOpticalFlowPyrLK(img_1, img_2, points1, points2, status, err, winSize, 2, termcrit, 0, 0.001);
 }
 
 void featureDetection(Mat img_1, vector<Point2f>& points1)
 {
     vector<KeyPoint> keypoints_1;
-    int fast_threshold = 40;
+    int fast_threshold = 20;
     bool nonmaxSuppression = true;
-    // FAST (Features from Accelerated Segment Test) corner detector
-    FAST(img_1, keypoints_1, fast_threshold, nonmaxSuppression);
+    //FAST (Features from Accelerated Segment Test) corner detector
+    //FAST(img_1, keypoints_1, fast_threshold, nonmaxSuppression);
+	cv::Ptr<Feature2D> detector = cv::xfeatures2d::SIFT::create();
+	detector->detect(img_1,keypoints_1);
     KeyPoint::convert(keypoints_1, points1, vector<int>());
+
+    //goodFeaturesToTrack(img_1, points1, 20, 0.05, 5.0, cv::Mat());    
 }  
 
 string type2str(int type) {
@@ -101,7 +107,7 @@ void callback(const sensor_msgs::ImageConstPtr& msg_rgb , const sensor_msgs::Ima
     cnt++;
     if(cnt%30 != 0)
     {
-        return;    
+    //    return;    
     }
     cv_bridge::CvImagePtr img_ptr_rgb;
     cv_bridge::CvImagePtr img_ptr_depth;
@@ -126,18 +132,18 @@ void callback(const sensor_msgs::ImageConstPtr& msg_rgb , const sensor_msgs::Ima
         return;
     }
 
-    Rect myROI(0,105,590,375);
+    //Rect myROI(0,105,590,375);
 
-    Mat& imageDepth = img_ptr_depth->image;
-    Mat& imageRGB = img_ptr_rgb->image;
+    Mat& currImageDepth = img_ptr_depth->image;
+    Mat& currImageRGB = img_ptr_rgb->image;
 
-    Mat currImageDepth(imageDepth,myROI);
-    Mat currImageRGB(imageRGB,myROI);
+    //Mat currImageDepth(imageDepth,myROI);
+    //Mat currImageRGB(imageRGB,myROI);
 
+	GaussianBlur( currImageDepth, currImageDepth, Size(9,9), 0, 0);	
+	
     vector<int> png_parameters;
     png_parameters.push_back(CV_IMWRITE_PNG_COMPRESSION);
-    
-   
 
     // if this is first image store it and go to next iteration
     if(state == boot)    
@@ -233,7 +239,7 @@ void callback(const sensor_msgs::ImageConstPtr& msg_rgb , const sensor_msgs::Ima
     int myz = int(t_f.at<double>(2));
     
     Mat mr,mq;
-    Vec3d angles = RQDecomp3x3(R_f,mr,mq);
+    Vec3d angles = RQDecomp3x3(R,mr,mq);
 
     ROS_INFO_STREAM(angles.t());
     //ROS_INFO_STREAM("*X = " << myx << " Y = " << myz << " " << scale);
