@@ -33,13 +33,19 @@ Mat prevImageRGB;
 Mat prevImageDepth;
 Mat R_f, t_f; //the final rotation and tranlation vectors
 
-// focal length of the camera
-double focal = 525;
-
 int cnt = 0;
 
+double fx = 522.7001280157992;
+double fy = 525.3786195060062;
+
+// focal length of the camera
+double focal = (fx + fy) / 2;
+
+double cx = 312.833722456855;
+double cy = 228.4953406777805;
+
 // principle point of the camera
-cv::Point2d pp(312.60,228.62);
+cv::Point2d pp(cx,cy);
 
 enum States
 {
@@ -133,6 +139,8 @@ void callback(const sensor_msgs::ImageConstPtr& msg_rgb , const sensor_msgs::Ima
     
     imageDepth.convertTo(imageDepth, CV_8U, 0.1);
 
+    inpaint(imageDepth,(imageDepth == 0),currImageDepth, 5.0, INPAINT_TELEA);
+        
     //cvtColor( currImageRGB_bayer, currImageRGB, COLOR_BayerGB2GRAY);
 
 	//GaussianBlur( currImageRGB, currImageRGB, Size(5,5), 0, 0);	
@@ -174,16 +182,36 @@ void callback(const sensor_msgs::ImageConstPtr& msg_rgb , const sensor_msgs::Ima
             && prevImageDepth.at<unsigned short>(prevFeatures.at(i)) != 0
             && currImageDepth.at<unsigned short>(currFeatures.at(i)) != 0)
         {
-            //sumXPrev +=                
+            sumXPrev += ((double)prevFeatures.at(i).x - cx) * (double)prevImageDepth.at<unsigned short>(prevFeatures.at(i)) / fx;
+            sumXCurr += ((double)currFeatures.at(i).x - cx) * (double)currImageDepth.at<unsigned short>(currFeatures.at(i)) / fx;            
+            sumYPrev += ((double)prevFeatures.at(i).y - cy) * (double)prevImageDepth.at<unsigned short>(prevFeatures.at(i)) / fy;
+            sumYCurr += ((double)currFeatures.at(i).y - cy) * (double)currImageDepth.at<unsigned short>(currFeatures.at(i)) / fy;
             sumZPrev += prevImageDepth.at<unsigned short>(prevFeatures.at(i));
             sumZCurr += currImageDepth.at<unsigned short>(currFeatures.at(i));
             count++;
         }
     }     
 
-    cnt++;
+    Mat centroidPrev(3,1,DataType<double>::type);
+    Mat centroidCurr(3,1,DataType<double>::type);
 
-    //Mat zeros = Mat::zeros(currImageRGB.rows,currImageRGB.cols,CV_8UC3);    
+    if(count!=0)
+    {
+        centroidPrev.at<double>(0,0) = sumXPrev/count;
+        centroidPrev.at<double>(1,0) = sumYPrev/count;
+        centroidPrev.at<double>(2,0) = sumZPrev/count;
+    
+        centroidCurr.at<double>(0,0) = sumXCurr/count;
+        centroidCurr.at<double>(1,0) = sumYCurr/count;
+        centroidCurr.at<double>(2,0) = sumZCurr/count;
+        ROS_INFO_STREAM(count);
+    
+        ROS_INFO_STREAM(centroidPrev);
+        ROS_INFO_STREAM(centroidCurr);        
+
+        //t = -R * centroidPrev + centroidCurr;
+    }
+
 
     if(state == init)
     {
@@ -193,17 +221,13 @@ void callback(const sensor_msgs::ImageConstPtr& msg_rgb , const sensor_msgs::Ima
     }
     else
     {
-        t_f = t_f + scale * (R_f*t);
+        t_f = t_f + (R_f*t);
         R_f = R*R_f;
     }
            
     prevImageRGB = currImageRGB.clone();
     prevImageDepth = currImageDepth.clone();
     
-    ROS_INFO_STREAM(mask.rows);
-
-    ROS_INFO_STREAM(currFeatures.size());
-
     for(int i=0;i<mask.rows;i++)
     {
         if(1 ==  mask.at<uchar>(i,1))
@@ -220,12 +244,8 @@ void callback(const sensor_msgs::ImageConstPtr& msg_rgb , const sensor_msgs::Ima
     
     int myx = int(t_f.at<double>(0));
     int myz = int(t_f.at<double>(2));
-    
-    Mat mr,mq;
-    Vec3d angles = RQDecomp3x3(R_f,mr,mq);
 
-    ROS_INFO_STREAM(t_f);
-    //ROS_INFO_STREAM("*X = " << myx << " Y = " << myz << " " << scale);
+    ROS_INFO_STREAM("*X = " << myx << " Y = " << myz);
 }
 
 int main(int argc, char** argv)
