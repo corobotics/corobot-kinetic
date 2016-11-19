@@ -1,5 +1,6 @@
 cmake_minimum_required(VERSION 2.8.3)
 project(corobot_optical_flow)
+set(PCL_DIR "/usr/local/x86_64-linux-gnu") 
 
 ## Find catkin macros and libraries
 ## if COMPONENTS list like find_package(catkin REQUIRED COMPONENTS xyz)
@@ -14,7 +15,7 @@ find_package(catkin REQUIRED COMPONENTS
   cv_bridge
   image_transport
 )
-
+find_package(PCL REQUIRED)
 ## System dependencies are found with CMake's conventions
 # find_package(Boost REQUIRED COMPONENTS system)
 
@@ -121,7 +122,7 @@ catkin_package(
 include_directories(
   ${catkin_INCLUDE_DIRS}
 )
-
+include_directories(${PCL_INCLUDE_DIRS})
 ## Declare a C++ library
 # add_library(corobot_optical_flow
 #   src/${PROJECT_NAME}/corobot_optical_flow.cpp
@@ -144,6 +145,7 @@ add_executable(corobot_optical_flow_node src/corobot_optical_flow_node.cpp)
 ## Specify libraries to link a library or executable target against
 target_link_libraries(corobot_optical_flow_node
    ${catkin_LIBRARIES}
+   ${PCL_LIBRARIES}
  )
 
 #############

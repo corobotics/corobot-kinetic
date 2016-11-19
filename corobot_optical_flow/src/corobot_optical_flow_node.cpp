@@ -1,51 +1,38 @@
 #include <ros/ros.h>
-#include <cv_bridge/cv_bridge.h>
 
-#include <sensor_msgs/Image.h>
-#include <sensor_msgs/image_encodings.h>
-
-#include <opencv2/video/tracking.hpp>
-#include <opencv2/highgui/highgui.hpp>
-#include <opencv2/calib3d/calib3d.hpp>
 #include <opencv2/core/core.hpp>
-#include <opencv2/xfeatures2d.hpp>
-#include <opencv2/imgproc/imgproc.hpp>
-#include <opencv2/photo/photo.hpp>
 
-#include <message_filters/subscriber.h>
-#include <message_filters/synchronizer.h>
-#include <message_filters/sync_policies/approximate_time.h>
+#include <sensor_msgs/PointCloud2.h>
+#include <pcl_conversions/pcl_conversions.h>
+#include <pcl_ros/point_cloud.h>
 
-#include <iostream>
-#include <fstream>
-#include <thread>
-#include <mutex>
-#include <queue>
+#include <Eigen/Core>
+#include <pcl/point_types.h>
+#include <pcl/point_cloud.h>
+#include <pcl/features/brisk_2d.h>
+#include <pcl/keypoints/brisk_2d.h>
+//#include <pcl/kdtree/kdtree_flann.h>
+#include <pcl/io/pcd_io.h>
+#include <pcl/registration/icp.h>
+//#include <pcl/registration/sample_consensus_prerejective.h>
+//#include <pcl/segmentation/sac_segmentation.h>
 
 using namespace cv;
-using namespace std;
-using namespace message_filters;
+using namespace pcl;
 
-#define MAX_X 1200
-#define MAX_Z 1200
+// Types
+typedef PointCloud<PointXYZRGB> PointCloudIn;
 
-Mat prevImageRGB;
-Mat prevImageDepth;
-Mat R_f, t_f; //the final rotation and tranlation vectors
+typedef PointXYZI PointT;
+typedef PointCloud<PointT> PointCloudT;
 
-int cnt = 0;
+//typedef PointCloud<Normal> PointCloudN;
 
-double fx = 522.7001280157992;
-double fy = 525.3786195060062;
+typedef PointWithScale KeyPointT;
+typedef PointCloud<KeyPointT> KeyPointCloudT;
 
-// focal length of the camera
-double focal = (fx + fy) / 2;
-
-double cx = 312.833722456855;
-double cy = 228.4953406777805;
-
-// principle point of the camera
-cv::Point2d pp(cx,cy);
+typedef BRISKSignature512 FeatureT;
+typedef PointCloud<FeatureT> FeatureCloudT;
 
 enum States
 {
@@ -56,196 +43,130 @@ enum States
 
 States state = boot;
 
-/*********************************************************************************************
- * Kanade-Lucas-Tomasi feature tracker is used for finding sparse pixel wise correspondences. 
- * The KLT algorithm assumes that a point in the nearby space, and uses image gradients to 
- * find the best possible motion of the feature point.
- *********************************************************************************************/
-void featureTracking(Mat img_1, Mat img_2, vector<Point2f>& points1, vector<Point2f>& points2, vector<uchar>& status)
-{
-    // this function track points from points1 in img1 tracks
-    // img2 and stores points in point2
-    vector<float> err;
-    Size winSize=Size(21,21);
-    TermCriteria termcrit=TermCriteria(TermCriteria::COUNT+TermCriteria::EPS, 30, 0.01);
-    calcOpticalFlowPyrLK(img_1, img_2, points1, points2, status, err, winSize, 3, termcrit, 0, 0.001);
+PointCloudT::Ptr prev;
+FeatureCloudT::Ptr prev_features;  
 
-    int indexCorrection = 0;
-    for( int i=0; i<status.size(); i++)
-    {  
-        if (status.at(i) == 0)	
-        {
-     		  points1.erase (points1.begin() + (i - indexCorrection));
-     		  points2.erase (points2.begin() + (i - indexCorrection));
-     		  indexCorrection++;
-     	}
-    }
-}
-
-void featureDetection(Mat img_1, vector<Point2f>& points1)
-{
-    vector<KeyPoint> keypoints_1;
-    int fast_threshold = 20;
-    bool nonmaxSuppression = true;
-    //FAST (Features from Accelerated Segment Test) corner detector
-    FAST(img_1, keypoints_1, fast_threshold, nonmaxSuppression);
-    KeyPoint::convert(keypoints_1, points1, vector<int>());
-}  
+Mat R_f,t_f;
 
 // Handler / callback
-void callback(const sensor_msgs::ImageConstPtr& msg_rgb , const sensor_msgs::ImageConstPtr& msg_depth)
+void callback(const sensor_msgs::PointCloud2ConstPtr& pointer)
 {
-    cv_bridge::CvImagePtr img_ptr_rgb;
-    cv_bridge::CvImagePtr img_ptr_depth;
+    PointCloudIn::Ptr input (new PointCloudT);
 
-    try
-    {
-        img_ptr_depth = cv_bridge::toCvCopy(*msg_depth, sensor_msgs::image_encodings::TYPE_16UC1);
-    }
-    catch (cv_bridge::Exception& e)
-    {
-        ROS_ERROR("cv_bridge exception:  %s getting depth", e.what());
-        return;
-    }
+    PointCloudT::Ptr curr (new PointCloudT);
+    //PointCloudN::Ptr currN(new PointCloudNT);
+
+    KeyPointCloudT::Ptr curr_KeyPoints (new KeyPointCloudT);
+
+	FeatureCloudT::Ptr curr_features (new FeatureCloudT);
     
-    try
-    {
-        img_ptr_rgb = cv_bridge::toCvCopy(*msg_rgb, sensor_msgs::image_encodings::BAYER_GRBG8);
-    }
-    catch (cv_bridge::Exception& e)
-    {
-        ROS_ERROR("cv_bridge exception:  %s getting rgb", e.what());
-        return;
-    }
-
-    Rect myROI(0,105,590,375);
-
-    Mat& imageDepth = img_ptr_depth->image;
-    Mat& imageRGB = img_ptr_rgb->image;
-
-    Mat currImageRGB_f;
-    Mat currImageRGB_cf1;
-
-    cvtColor( imageRGB, currImageRGB_cf1, COLOR_BayerGB2BGR_EA);
+    ROS_INFO_STREAM("Called0");
     
-    Mat currImageRGB_cf;
-    bilateralFilter( currImageRGB_cf1, currImageRGB_cf, 9, 75, 75);
-   
-    cvtColor( currImageRGB_cf, currImageRGB_f, COLOR_BGR2GRAY);
-      
-    Mat currImageDepth; // (imageDepth,myROI);
-    Mat currImageRGB = currImageRGB_f; //(currImageRGB_f,myROI);
-    Mat currImageRGB_c = currImageRGB_cf; //(currImageRGB_cf,myROI);
+    fromROSMsg(*pointer, *input);
+    PointXYZRGBtoXYZI(*input,*currT)
+
+    ROS_INFO_STREAM("Called1");
+
+    // Apply filter (noise removal) on the scene
     
-    imageDepth.convertTo(imageDepth, CV_8U, 0.1);
 
-    inpaint(imageDepth,(imageDepth == 0),currImageDepth, 5.0, INPAINT_TELEA);
-        
-    //cvtColor( currImageRGB_bayer, currImageRGB, COLOR_BayerGB2GRAY);
+    // Estimate normals for scene
+    NormalEstimation<PointXYZI,PointN> nest;
+    nest.setSearchMethod (search::KdTree<PointXYZI>::Ptr (new search::KdTree<PointXYZI> (false)));
+    nest.setRadiusSearch (0.03);
+    nest.setInputCloud (currT);
+    nest.compute (*currN);
+    
+    ROS_INFO_STREAM("1:" << currT->size ());
+    ROS_INFO_STREAM("2:" << currN->size ());
 
-	//GaussianBlur( currImageRGB, currImageRGB, Size(5,5), 0, 0);	
+    ROS_INFO_STREAM("Called2");
 
-    //vector<int> png_parameters;
-    //png_parameters.push_back(CV_IMWRITE_PNG_COMPRESSION);
+    // Find  keypoints    
+  
+    ROS_INFO_STREAM("Called3");
+    BriskKeypoint2d<PointT> bkest;
+    bkest.setThreshold(60);
+    bkest.setOctaves(4);
+    bkest.setInputCloud(currT);
+    bkest.compute(*curr_KeyPoints);
 
+    // Estimate features for krypoints 
+    BRISK2DEstimation<PointT> best;
+    best.setInputCloud (currT);
+    best.setKeyPoints (curr_KeyPoints);
+    best.compute (*curr_features);
+
+    ROS_INFO_STREAM("Called4");
+    ROS_INFO_STREAM(":" << curr_features->size ());
+    
     // if this is first image store it and go to next iteration
     if(state == boot)    
     {
-        prevImageRGB = currImageRGB.clone();
-        prevImageDepth = currImageDepth.clone();
-        state = init;
+        prev = curr;
+        prev_features = curr_features;
+        state = init;        
         return;
     }    
-
-    Mat E, R, t, mask;
-    vector<uchar> status;
-    vector<Point2f> currFeatures;
-    vector<Point2f> prevFeatures;
         
-    featureDetection(prevImageRGB, prevFeatures);
-
-    featureTracking(prevImageRGB, currImageRGB, prevFeatures, currFeatures, status);
-   
-    // RANSAC Random sample consensus
-    E = findEssentialMat(currFeatures, prevFeatures, focal, pp, RANSAC, 0.999, 1.0, mask);
-    recoverPose(E, currFeatures, prevFeatures, R, t, focal, pp, mask);
-
-    int count = 0;     
-    // calculate centroid for prev and current image
-    double sumXPrev = 0, sumYPrev = 0, sumZPrev = 0;
-    double sumXCurr = 0, sumYCurr = 0, sumZCurr = 0;  
-
-    for(int i=0;i<mask.rows;i++)
+    /*pcl::SampleConsensusPrerejective<PointT,PointT,FeatureT> align;
+    align.setInputSource (prevT);
+    align.setSourceFeatures (prev_features);
+    align.setInputTarget (currT);
+    align.setTargetFeatures (curr_features);
+    align.setMaximumIterations (50000); // Number of RANSAC iterations
+    align.setNumberOfSamples (3); // Number of points to sample for generating/prerejecting a pose
+    align.setCorrespondenceRandomness (5); // Number of nearest features to use
+    align.setSimilarityThreshold (0.9f); // Polygonal edge length similarity threshold
+    align.setMaxCorrespondenceDistance (2.5f * leaf); // Inlier threshold
+    align.setInlierFraction (0.25f); // Required inlier fraction for accepting a pose hypothesis
     {
-        // mask 1 means inliers
-        if(1 ==  mask.at<uchar>(i,1) 
-            && prevImageDepth.at<unsigned short>(prevFeatures.at(i)) != 0
-            && currImageDepth.at<unsigned short>(currFeatures.at(i)) != 0)
+        align.align (*aligned);
+    }   
+
+    if (align.hasConverged ())
+    {
+        Mat R, t;
+        Eigen::Matrix4f transformation; 
+        align.computeTransformation (*aligned,transformation);
+
+        ROS_INFO("    | %6.3f %6.3f %6.3f | \n", transformation (0,0), transformation (0,1), transformation (0,2));
+        ROS_INFO("R = | %6.3f %6.3f %6.3f | \n", transformation (1,0), transformation (1,1), transformation (1,2));
+        ROS_INFO("    | %6.3f %6.3f %6.3f | \n", transformation (2,0), transformation (2,1), transformation (2,2));
+        ROS_INFO("\n");
+        ROS_INFO("t = < %0.3f, %0.3f, %0.3f >\n", transformation (0,3), transformation (1,3), transformation (2,3));
+        ROS_INFO("\n");
+        ROS_INFO_STREAM("Inliers:" << align.getInliers ().size () << currNT->size ());
+        
+        //R = transformation(Rect(0,0,2,2));
+        //t = transformation(Rect(0,3,2,3));
+    
+        if(state == init)
         {
-            sumXPrev += ((double)prevFeatures.at(i).x - cx) * (double)prevImageDepth.at<unsigned short>(prevFeatures.at(i)) / fx;
-            sumXCurr += ((double)currFeatures.at(i).x - cx) * (double)currImageDepth.at<unsigned short>(currFeatures.at(i)) / fx;            
-            sumYPrev += ((double)prevFeatures.at(i).y - cy) * (double)prevImageDepth.at<unsigned short>(prevFeatures.at(i)) / fy;
-            sumYCurr += ((double)currFeatures.at(i).y - cy) * (double)currImageDepth.at<unsigned short>(currFeatures.at(i)) / fy;
-            sumZPrev += prevImageDepth.at<unsigned short>(prevFeatures.at(i));
-            sumZCurr += currImageDepth.at<unsigned short>(currFeatures.at(i));
-            count++;
+            R_f = R.clone();
+            t_f = t.clone();
+            state = processing;
         }
-    }     
-
-    Mat centroidPrev(3,1,DataType<double>::type);
-    Mat centroidCurr(3,1,DataType<double>::type);
-
-    if(count!=0)
-    {
-        centroidPrev.at<double>(0,0) = sumXPrev/count;
-        centroidPrev.at<double>(1,0) = sumYPrev/count;
-        centroidPrev.at<double>(2,0) = sumZPrev/count;
-    
-        centroidCurr.at<double>(0,0) = sumXCurr/count;
-        centroidCurr.at<double>(1,0) = sumYCurr/count;
-        centroidCurr.at<double>(2,0) = sumZCurr/count;
-        ROS_INFO_STREAM(count);
-    
-        ROS_INFO_STREAM(centroidPrev);
-        ROS_INFO_STREAM(centroidCurr);        
-
-        //t = -R * centroidPrev + centroidCurr;
-    }
-
-
-    if(state == init)
-    {
-        R_f = R.clone();
-        t_f = t.clone();
-        state = processing;
+        else
+        {
+            t_f = t_f + (R_f*t);
+            R_f = R*R_f;
+        }
     }
     else
     {
-        t_f = t_f + (R_f*t);
-        R_f = R*R_f;
-    }
-           
-    prevImageRGB = currImageRGB.clone();
-    prevImageDepth = currImageDepth.clone();
-    
-    for(int i=0;i<mask.rows;i++)
-    {
-        if(1 ==  mask.at<uchar>(i,1))
-        {
-            circle(currImageRGB_c,currFeatures.at(i),2,CV_RGB(255,0,0));
-            line(currImageRGB_c,prevFeatures.at(i),currFeatures.at(i),CV_RGB(0,255,0));
-        }
-    }
+        ROS_INFO_STREAM("couldn't align");
+    }*/
 
-    //imshow("imagergb",currImageRGB-prevImageRGB);
-    imshow("Blur", currImageDepth);    
-    imshow("imager",currImageRGB_c); 
-    waitKey(1);
+    prev = curr;
+    prev_features = curr_features;
+            
+    /*
     
     int myx = int(t_f.at<double>(0));
     int myz = int(t_f.at<double>(2));
 
-    ROS_INFO_STREAM("*X = " << myx << " Y = " << myz);
+    ROS_INFO_STREAM("*X = " << myx << " Y = " << myz);*/
 }
 
 int main(int argc, char** argv)
@@ -254,16 +175,7 @@ int main(int argc, char** argv)
     ros::init(argc, argv, "optical_flow_node");
     ros::NodeHandle nh;
    
-    message_filters::Subscriber<sensor_msgs::Image> subscriber_depth( nh , "/camera/depth_registered/image_raw" , 1 );
-    message_filters::Subscriber<sensor_msgs::Image> subscriber_rgb( nh , "camera/rgb/image_raw" , 1 );
-
-    ///mobile_base/commands/velocity
-
-    typedef sync_policies::ApproximateTime<sensor_msgs::Image, sensor_msgs::Image> MySyncPolicy;
-
-    // ApproximateTime take a queue size as its constructor argument, hence MySyncPolicy(10)
-    Synchronizer<MySyncPolicy> sync(MySyncPolicy(10), subscriber_rgb, subscriber_depth );
-    sync.registerCallback(boost::bind(&callback, _1, _2));
+    ros::Subscriber groundPlaneEdge = nh.subscribe("/camera/depth_registered/points", 1, callback);    
 
     ros::spin();    
        
