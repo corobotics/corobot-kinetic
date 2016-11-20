@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 2.8.3)
 project(corobot_obstacle_avoidance)
-set(PCL_DIR  "/usr/local/share/pcl-1.8/")
+set(PCL_DIR "/usr/local/x86_64-linux-gnu") 
 
 ## Find catkin macros and libraries
 ## if COMPONENTS list like find_package(catkin REQUIRED COMPONENTS xyz)
@@ -12,10 +12,10 @@ find_package(catkin REQUIRED COMPONENTS
   roscpp
   rospy
   sensor_msgs
-  pcl
-  pcl_ros
+#  pcl
+#  pcl_ros
 )
-find_package(PCL  REQUIRED COMPONENTS)
+find_package(PCL REQUIRED)
 ## System dependencies are found with CMake's conventions
 # find_package(Boost REQUIRED COMPONENTS system)
 
@@ -119,7 +119,7 @@ catkin_package(
 ## Specify additional locations of header files
 ## Your package locations should be listed before other locations
 # include_directories(include)
-include_directories( include
+include_directories(include
   ${catkin_INCLUDE_DIRS}
 )
 include_directories(${PCL_INCLUDE_DIRS})
@@ -127,8 +127,8 @@ include_directories(${PCL_INCLUDE_DIRS})
 # add_library(corobot_obstacle_avoidance
 #   src/${PROJECT_NAME}/corobot_obstacle_avoidance.cpp
 # )
-link_directories(${PCL_LIBRARY_DIRS})
-add_definitions(${PCL_DEFINITIONS})
+#link_directories(${PCL_LIBRARY_DIRS})
+#add_definitions(${PCL_DEFINITIONS})
 ## Add cmake target dependencies of the library
 ## as an example, code may need to be generated before libraries
 ## either from message generation or dynamic reconfigure
