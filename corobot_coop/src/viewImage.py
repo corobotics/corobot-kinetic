@@ -138,7 +138,7 @@ class ImageViewer():
 	    return 'G'
 	elif col[2] <= 120:
 	    return 'B'
-        elif col[0] <= 50:
+        elif col[0] <= 40:
 	    return 'K'
 	else:
 	    return 'W'
