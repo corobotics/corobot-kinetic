@@ -22,8 +22,8 @@ class CorobotNavigator():
     MAX_ZONE_SIZE = 4
 
     def __init__(self, occupancy_map, landmark_graph):
-        # Robot's current position.
-        self.pose = None
+        # Robot's current position      
+	self.pose = None
         self.recov = False
         self.occupancy_map = occupancy_map
         self.landmark_graph = landmark_graph

@@ -39,11 +39,14 @@ typedef enum {
 ParticleFilterState particleFilterState = STOPPED;
 static unsigned int debugIndex = 0;
 
+static unsigned counter = 0;
 
 Odometry testVector[8];
 
 std::mutex PFLocMutex;
 
+
+   
 int main(int argc, char **argv)
 {
   /**
@@ -191,7 +194,7 @@ void goalCallback(Point goal)
       
       PFLocMutex.lock();
 
-      particleFilter->initialize(100);
+      particleFilter->initialize(200);
       
 //      particleFilter->initialize(10, odom);
       debugIndex = 0;
@@ -211,14 +214,12 @@ void goalCallback(Point goal)
 
 void odomCallback(Odometry odom)
 {
-   static bool sendParticles = false;
-   
+      
    double x_m = odom.pose.pose.position.x;
    double y_m = odom.pose.pose.position.y;
    double z_m = 0;
   
-   
-
+    ROS_INFO("PFLocalizationNode::%s counter = %u\n", __func__, counter);
    if (particleFilterState == RUNNING)
    {
       particleFilterState = PROCESSINGODOM;
@@ -233,8 +234,9 @@ void odomCallback(Odometry odom)
  //     ROS_INFO("PFLocalizationNode::%s updateParticlePositions end\n", __func__);
             
 
-      ++debugIndex;
-      if(sendParticles)
+//      ++debugIndex;
+      // Send the positions of the particles to the UI every 0.5 seconds.
+      if(counter % 15)
       {
          ParticleFilter::ParticleList& results = particleFilter->getParticleList();
          
@@ -248,15 +250,13 @@ void odomCallback(Odometry odom)
          
          particlePublisher.publish(particles);
          
-         sendParticles = false;
-      }
-      else
-      {
-         sendParticles = true;
       }
       
       PFLocMutex.unlock();  
                   
       particleFilterState = RUNNING;
    }
+   
+   ++counter;
+   
 }

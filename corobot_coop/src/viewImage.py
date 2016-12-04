@@ -1,13 +1,23 @@
 #!/usr/bin/env python
 
+"""
+    Calculates the position of another robot based on kinect input and current odometry
+"""
 import rospy
 import cv2
+import socket
 from sensor_msgs.msg import Image, LaserScan
 from corobot_common.msg import Pose
 from cv_bridge import CvBridge, CvBridgeError
 from nav_msgs.msg import Odometry
 import numpy as np
 
+"""
+    Calculates the distance between two points in n space
+    a: A vector describing 1 point in n space
+    b: A vector describing another point in n space
+    return: the euclidean distance between the two points
+"""
 def dist( a, b ):
     summ = 0
     for (x1, x2) in zip(a, b):
@@ -15,6 +25,9 @@ def dist( a, b ):
     return np.sqrt(summ)
 
 class ImageViewer():
+    """
+	Initializes the image viewing node
+    """
     def __init__( self ):
 	self.bridge = CvBridge()
 	self.image_sub = rospy.Subscriber("/camera/rgb/image_raw", Image, self.image_call)
@@ -26,16 +39,27 @@ class ImageViewer():
 	self.seq = "RRGRBRKGGBGKBBKKR"
 	self.colorRecord = open('colors.txt', 'a+')
 
-
+    """
+	Collects all of the input images
+    """
     def image_call(self, data):
 	self.images.append(data)
 
+    """
+	Collects all of the past odometry information
+    """
     def odom_call(self, data):
 	self.pos.append( data )
 
+    """
+	Collects all of the past laserscan data
+    """
     def scan_call(self, data):
 	self.scan.append( data )
 
+    """
+	Processes the most recent information to generate a position estimate if it can
+    """
     def processImage(self, junk):
 	while not rospy.is_shutdown():
 	    if len(self.images) == 0 or len(self.pos) == 0 or len(self.scan) == 0:
@@ -52,6 +76,7 @@ class ImageViewer():
 		print e
 	    gray_image = cv2.cvtColor(cv_image, cv2.COLOR_BGR2GRAY)
 	    edges = cv2.Canny(gray_image, 300, 600)
+	    # Try to find the circles in an image
 	    circles = cv2.HoughCircles( edges, cv2.HOUGH_GRADIENT, 1, 20, 100, 50, 5, 10 )
 	    output = cv_image.copy()
 	    if circles is not None:
@@ -96,6 +121,7 @@ class ImageViewer():
 			print ("THEM: ")
 			print (ox, oy, otheta)
 			print ( scan.header.stamp )
+			rospy.loginfo( "Time: %s\t( %s, %s ) at %s radians from ( %s, %s )", str(scan.header.stamp), str(ox), str(oy), str(otheta), str(px), str(py) )
 			break	
 	    cv2.imshow( "Test", output)
 	    cv2.waitKey(3)
@@ -112,7 +138,7 @@ class ImageViewer():
 	    return 'G'
 	elif col[2] <= 120:
 	    return 'B'
-        elif col[0] <= 50:
+        elif col[0] <= 40:
 	    return 'K'
 	else:
 	    return 'W'
