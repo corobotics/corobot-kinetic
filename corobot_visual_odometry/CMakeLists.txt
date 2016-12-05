@@ -9,6 +9,7 @@ find_package(catkin REQUIRED COMPONENTS
   pcl_ros
   roscpp
   std_msgs
+  cv_bridge
 )
 
 ## System dependencies are found with CMake's conventions
@@ -103,7 +104,7 @@ find_package(catkin REQUIRED COMPONENTS
 catkin_package(
 #  INCLUDE_DIRS include
 #  LIBRARIES corobot_visual_odometry
-  CATKIN_DEPENDS pcl_conversions pcl_ros roscpp std_msgs
+  CATKIN_DEPENDS pcl_conversions pcl_ros roscpp std_msgs cv_bridge
 #  DEPENDS system_lib
 )
 
