@@ -7,7 +7,7 @@
 #include "pcl/filters/radius_outlier_removal.h"
 #include <pcl/PCLHeader.h>
 #include <pcl/PointIndices.h>
-#include<cmath>
+#include <cmath>
 
 enum DrivingDirection {
     LEFT,
@@ -77,6 +77,8 @@ public:
 
         bool isGround;
 
+        previousTurn = FORWARD;
+
         nodeHandle.getParamCached("radiusAlongX", radiusAlongX);
         nodeHandle.getParamCached("maxCropAlongZ", maxCropAlongZ);
         nodeHandle.getParamCached("minCropAlongZ", minCropAlongZ);
@@ -106,16 +108,16 @@ public:
             diffZ = farZ - closeZ;
             sumY = closeY + farY;
             sumZ = closeZ + farZ;
-	
-	    ROS_INFO("Calculating slope and intercept");
-            slope = diffY/diffZ;
-            intercept = sumY/2 - slope * sumZ / 2;
+
+            ROS_INFO("Calculating slope and intercept");
+            slope = diffY / diffZ;
+            intercept = sumY / 2 - slope * sumZ / 2;
 
             previous_nearY = closeY;
             previous_farY = farY;
             previous_nearZ = closeZ;
             previous_farZ = farZ;
-      
+
             ROS_INFO("Slope %f", slope);
             ROS_INFO("Intercept %f", intercept);
         }
@@ -142,9 +144,7 @@ public:
         passThrough.setKeepOrganized(true);
         passThrough.filter(*points);
 
-        passThrough.filter(cloud_filtered);
-
-	double count = 0.0;
+        double count = 0.0;
         ROS_INFO("Calculating ground points");
 
         pcl::PointCloud<pcl::PointXYZ>::Ptr temp_cloud(new pcl::PointCloud <pcl::PointXYZ>);
@@ -161,7 +161,7 @@ public:
             distanceFromGround = fabs(location->y - expectedYCoord);
 //            ROS_INFO("Distance from Ground %f", distanceFromGround);
 
-	    count+=distanceFromGround;
+            count += distanceFromGround;
             if (distanceFromGround > roughToleranceLevel && !std::isnan(distanceFromGround)) {
                 location->x = std::numeric_limits<float>::quiet_NaN();
                 location->y = std::numeric_limits<float>::quiet_NaN();
@@ -169,24 +169,19 @@ public:
 
             }
                 // if the point detected is close to the ground
-            else if (distanceFromGround >= fineToleranceLevel && distanceFromGround <= roughToleranceLevel && !std::isnan(distanceFromGround))
+            else if (distanceFromGround >= fineToleranceLevel && distanceFromGround <= roughToleranceLevel &&
+                     !std::isnan(distanceFromGround))
 //                     fabs(location->x) < (radiusAlongX - lateralBumper) &&
 //                    location->z > (closeZ + frontalBumper) &&
 //                   location->z < (maxCropAlongZ - frontalBumper)) {
-   	    {             //actual ground plane we are interested in
+            {             //actual ground plane we are interested in
                 groundPoints++;
                 totalGroundPoints += location->x;
             }
         }
 
-	ROS_INFO("Distance from Ground %f", count);
         ROS_INFO("Ground Points : %d", groundPoints);
-	ROS_INFO("Total Ground Points : %f", totalGroundPoints);
-
-
-        if (groundPoints <= 0) {
-            isGround = false;
-        }
+        ROS_INFO("Total Ground Points : %f", totalGroundPoints);
 
         /*
         //find edges and eliminate the outliers from the ground plane detected.
@@ -234,6 +229,7 @@ public:
         }
         */
 
+        /*
         if (groundPoints > 0) {
             if (outlierRadius >= 0 && points->height * points->width > 0) {
                 outlierRemoval.setInputCloud(points);
@@ -244,15 +240,19 @@ public:
                 outlierRemoval.filter(cloud_filtered);
             }
         } else {
-            ROS_INFO("Cannot detect the ground %d", isGround);
+            ROS_INFO("Cannot detect the ground: %d", isGround);
         }
-
+        */
         pcl::PointCloud <pcl::PointXYZ> cloudForNav;
-        pcl::fromPCLPointCloud2(cloud_filtered, cloudForNav);
-
-        //to determine the direction of the movement for robot
-
+        pcl::fromPCLPointCloud2(*points, cloudForNav);
+/**
+ *  This section is for the edge detetcion for te points detected after going through the passhrough filter
+ */
+        // to determine the direction of the movement for robot
+/*
         if (cloudForNav.size() > 0) {
+            ROS_INFO("Size of Nav Cloud: %f", cloudForNav.size());
+
             float centroidOfX = 0.0;
 
             for (pcl::PointCloud<pcl::PointXYZ>::iterator
@@ -260,7 +260,7 @@ public:
                 centroidOfX += point->x;
             }
 
-	    ROS_INFO("Centroid : %f", centroidOfX);
+            ROS_INFO("Centroid : %f", centroidOfX);
 
             centroidOfX /= cloudForNav.size();
 
@@ -272,16 +272,22 @@ public:
 
             previousTurn = direction;
 
-        } else if (groundPoints == 0) { //cannot find ground
+        } else
+*/
+        if (groundPoints == 0) { //cannot find ground
             if (previousTurn == LEFT) {
                 direction = RIGHT;
             } else if (previousTurn == RIGHT) {
                 direction = LEFT;
+            } else {
+                direction = RIGHT;
             }
 
-        } else if(groundPoints>0){
+            previousTurn = direction;
+
+        } else if (groundPoints > 0) {
             direction = FORWARD;
-            previousTurn = totalGroundPoints / groundPoints > 0 ? RIGHT : LEFT;
+            previousTurn = direction;
         }
 
         if (direction == LEFT) {
@@ -292,7 +298,7 @@ public:
             ROS_INFO("Move Forward");
         }
 
-        pcl_conversions::fromPCL(cloud_filtered, cloud_pointer);
+        pcl_conversions::fromPCL(*points, cloud_pointer);
         groundDetect.publish(cloud_pointer);
         //       occlusion.publish(nav_pointer);
     }
