@@ -15,20 +15,9 @@
 #include <pcl/point_types.h>
 #include <pcl/point_types_conversion.h>
 #include <pcl/point_cloud.h>
-#include <pcl/filters/filter.h>
-#include <pcl/filters/median_filter.h>
-#include <pcl/filters/statistical_outlier_removal.h>
-#include <pcl/features/pfh.h>
-#include <pcl/keypoints/harris_3d.h>
-#include <pcl/keypoints/sift_keypoint.h>
-#include <pcl/features/intensity_spin.h>
-#include <pcl/features/rift.h>
-#include <pcl/kdtree/kdtree_flann.h>
 #include <pcl/io/pcd_io.h>
-//#include <pcl/registration/icp.h>
 #include <pcl/registration/sample_consensus_prerejective.h>
 #include <pcl/registration/correspondence_estimation.h>
-//#include <pcl/segmentation/sac_segmentation.h>
 #include <pcl/registration/correspondence_rejection_sample_consensus.h>
 #include <pcl/visualization/pcl_visualizer.h>
 #include <pcl/common/transformation_from_correspondences.h>
@@ -50,6 +39,10 @@
 #include <message_filters/synchronizer.h>
 #include <message_filters/sync_policies/approximate_time.h>
 
+#define SHOW_3D_POINT_CLOUD 1
+#define DEBUG 1
+#define SHOW_2D_IMAGE 1
+
 using namespace std;
 using namespace cv;
 using namespace pcl;
@@ -62,7 +55,6 @@ typedef PointXYZI KeyPointT;
 typedef PointCloud<KeyPointT> KeyPointCloudT;
 
 typedef message_filters::sync_policies::ApproximateTime<sensor_msgs::Image, sensor_msgs::Image> MySyncPolicy;
-
 
 enum States
 {
@@ -81,12 +73,14 @@ double inlierThresh = 9;
 
 States state = boot;
 
+#if SHOW_3D_POINT_CLOUD
 PointCloudIn::Ptr prevC;
+#endif
 
-Mat prevImageRGB;
+Mat prevImageIntensity;
 Mat prevImageDepth;
 
-//Mat R_f,t_f;
+Eigen::Matrix4f final_transformation;
 
 void featureTracking(Mat img_1, Mat img_2, vector<Point2f>& points1, vector<Point2f>& points2, vector<uchar>& status)
 {
@@ -143,60 +137,23 @@ void callback(const sensor_msgs::ImageConstPtr& msg_rgb , const sensor_msgs::Ima
 
     ROS_INFO("Received images");
 
-    Mat& imageDepth = img_ptr_depth->image;
-    Mat& imageRGB = img_ptr_rgb->image;
+    Mat& currImageDepth = img_ptr_depth->image;
+    Mat& currImageBayer = img_ptr_rgb->image;
 
-    Mat currImageRGB_f;
-    Mat currImageRGB_cf1;
+    Mat currImageBGR_f;
+    Mat currImageBGR;
+    Mat currImageIntensity;
 
-    cvtColor( imageRGB, currImageRGB_cf1, COLOR_BayerGB2BGR_EA);
+    cvtColor( currImageBayer, currImageBGR, COLOR_BayerGB2BGR_EA);
     
-    Mat currImageRGB_cf;
-    bilateralFilter( currImageRGB_cf1, currImageRGB_cf, 9, 75, 75);
+    bilateralFilter( currImageBGR, currImageBGR_f, 9, 75, 75);
 
-    PointCloudIn::Ptr curr (new PointCloudIn);
-    curr->header.frame_id = "camera_depth_frame";
-    curr->height = currImageRGB_cf.rows;
-    curr->width = currImageRGB_cf.cols;
-
-    curr->resize(curr->height * curr->width);
-
-    ROS_INFO("Creating point cloud");
-
-    int i = 0;
-
-    for(int y = 0; y < currImageRGB_cf.rows; y++)
-    {
-        for(int x = 0; x < currImageRGB_cf.cols; x++)
-        {
-            PointIn& temp = curr->points[i];
-            i++;
-            temp.z = imageDepth.at<unsigned short>(y,x)/10;            
-            temp.x = (x - cx) * temp.z / fx; 
-            temp.y = (y - cy) * temp.z / fy;
-            temp.b = currImageRGB_cf.at<cv::Vec3b>(y,x)[0];
-            temp.g = currImageRGB_cf.at<cv::Vec3b>(y,x)[1];
-            temp.r = currImageRGB_cf.at<cv::Vec3b>(y,x)[2];
-        }         
-    }    
-
-    curr->sensor_origin_.setZero ();
-    curr->sensor_orientation_.w () = 0.0f;
-    curr->sensor_orientation_.x () = 0.0f;
-    curr->sensor_orientation_.y () = 0.0f;
-    curr->sensor_orientation_.z () = 0.0f;   
-
-    cvtColor( currImageRGB_cf, currImageRGB_f, COLOR_BGR2GRAY);
-      
-    Mat currImageDepth = imageDepth; // (imageDepth,myROI);
-    Mat currImageRGB = currImageRGB_f; //(currImageRGB_f,myROI);
-    Mat currImageRGB_c = currImageRGB_cf; //(currImageRGB_cf,myROI);
+    cvtColor( currImageBGR_f, currImageIntensity, COLOR_BGR2GRAY);
 
     // if this is first image store it and go to next iteration
     if(state == boot)    
     {
-        prevC = curr;
-        prevImageRGB = currImageRGB.clone();
+        prevImageIntensity = currImageIntensity.clone();
         prevImageDepth = currImageDepth.clone();
         state = init;
         return;
@@ -206,8 +163,8 @@ void callback(const sensor_msgs::ImageConstPtr& msg_rgb , const sensor_msgs::Ima
     vector<Point2f> currFeatures;
     vector<Point2f> prevFeatures;
         
-    featureDetection(prevImageRGB, prevFeatures);
-    featureTracking(prevImageRGB, currImageRGB, prevFeatures, currFeatures, status);   
+    featureDetection(prevImageIntensity, prevFeatures);
+    featureTracking(prevImageIntensity, currImageIntensity, prevFeatures, currFeatures, status);   
 
     KeyPointCloudT::Ptr prevKeypoints (new KeyPointCloudT);
     KeyPointCloudT::Ptr currKeypoints (new KeyPointCloudT);
@@ -221,22 +178,18 @@ void callback(const sensor_msgs::ImageConstPtr& msg_rgb , const sensor_msgs::Ima
         {
             // create 3D points
             KeyPointT prevPoint;
-            prevPoint.z = prevImageDepth.at<unsigned short>(prevFeatures.at(i))/10;
+            prevPoint.z = - prevImageDepth.at<unsigned short>(prevFeatures.at(i))/10;
             prevPoint.x = (prevFeatures.at(i).x - cx) * prevPoint.z / fx; 
             prevPoint.y = (prevFeatures.at(i).y - cy) * prevPoint.z / fy;            
-            prevPoint.intensity = prevImageRGB.at<unsigned short>(prevFeatures.at(i));
+            prevPoint.intensity = prevImageIntensity.at<unsigned short>(prevFeatures.at(i));
             prevKeypoints->push_back(prevPoint);
             
             KeyPointT currPoint;  
-            currPoint.z = currImageDepth.at<unsigned short>(currFeatures.at(i))/10;           
+            currPoint.z = - currImageDepth.at<unsigned short>(currFeatures.at(i))/10;           
             currPoint.x = (currFeatures.at(i).x - cx) * currPoint.z / fx; 
             currPoint.y = (currFeatures.at(i).y - cy) * currPoint.z / fy;    
-            currPoint.intensity = currImageRGB.at<unsigned short>(currFeatures.at(i));
+            currPoint.intensity = currImageIntensity.at<unsigned short>(currFeatures.at(i));
             currKeypoints->push_back(currPoint);        
-
-            circle(currImageRGB_c,currFeatures.at(i),2,CV_RGB(255,0,0));
-            circle(currImageRGB_c,prevFeatures.at(i),2,CV_RGB(0,255,0));
-            line(currImageRGB_c,prevFeatures.at(i),currFeatures.at(i),CV_RGB(0,0,255));
         }
     }   
 
@@ -299,13 +252,7 @@ void callback(const sensor_msgs::ImageConstPtr& msg_rgb , const sensor_msgs::Ima
         {
             clique.push_back(currMax);
         }
-        else
-        {
-            // important***************************************************************************
-            ROS_INFO_STREAM("No inliers");
-            break;
-        }
-    
+
         // intialize potentialNodes
         for(int i = 0; i < size; i++)
         {
@@ -338,10 +285,9 @@ void callback(const sensor_msgs::ImageConstPtr& msg_rgb , const sensor_msgs::Ima
         } 
     }
 
-    // remove keypoints which are not in clique
     ROS_INFO_STREAM(clique.size());
-    ROS_INFO_STREAM("****************************************************************");
 
+    // use keypoints which are in clique
     CorrespondencesPtr intial_correspondences(new pcl::Correspondences);
     intial_correspondences->resize(clique.size());
     for(int i =0; i < clique.size(); i++)
@@ -349,18 +295,6 @@ void callback(const sensor_msgs::ImageConstPtr& msg_rgb , const sensor_msgs::Ima
         (*intial_correspondences)[i].index_query = clique[i];
         (*intial_correspondences)[i].index_match = clique[i];
     }    
-
-    /*prevKeypoints->sensor_origin_.setZero ();
-    prevKeypoints->sensor_orientation_.w () = 0.0f;
-    prevKeypoints->sensor_orientation_.x () = 1.0f;
-    prevKeypoints->sensor_orientation_.y () = 0.0f;
-    prevKeypoints->sensor_orientation_.z () = 0.0f;
-
-    currKeypoints->sensor_origin_.setZero ();
-    currKeypoints->sensor_orientation_.w () = 0.0f;
-    currKeypoints->sensor_orientation_.x () = 1.0f;
-    currKeypoints->sensor_orientation_.y () = 0.0f;
-    currKeypoints->sensor_orientation_.z () = 0.0f;*/  
 
     ROS_INFO_STREAM("Finding final correspondance.");
 
@@ -371,24 +305,82 @@ void callback(const sensor_msgs::ImageConstPtr& msg_rgb , const sensor_msgs::Ima
     rejector.setInputCorrespondences(intial_correspondences);
     rejector.getCorrespondences(*final_correspondences);    
     Eigen::Matrix4f transformation = rejector.getBestTransformation();
+
+    if(state == init)
+    {
+        final_transformation = transformation;
+        state = processing;
+    }
+    else
+    {
+        final_transformation = final_transformation * transformation;
+    }
     
     ROS_INFO_STREAM(intial_correspondences->size());
     ROS_INFO_STREAM(final_correspondences->size());
 
     ROS_INFO_STREAM("Finding Transformation matrix.");
 
-    ROS_INFO("    | %6.3f %6.3f %6.3f | \n", transformation (0,0), transformation (0,1), transformation (0,2));
-    ROS_INFO("R = | %6.3f %6.3f %6.3f | \n", transformation (1,0), transformation (1,1), transformation (1,2));
-    ROS_INFO("    | %6.3f %6.3f %6.3f | \n", transformation (2,0), transformation (2,1), transformation (2,2));
-    ROS_INFO("t = < %0.3f, %0.3f, %0.3f >\n", transformation (0,3), transformation (1,3), transformation (2,3));            
+    ROS_INFO("    | %6.3f %6.3f %6.3f | \n", final_transformation (0,0), final_transformation (0,1), final_transformation (0,2));
+    ROS_INFO("R = | %6.3f %6.3f %6.3f | \n", final_transformation (1,0), final_transformation (1,1), final_transformation (1,2));
+    ROS_INFO("    | %6.3f %6.3f %6.3f | \n", final_transformation (2,0), final_transformation (2,1), final_transformation (2,2));
+    ROS_INFO("t = < %0.3f, %0.3f, %0.3f >\n", final_transformation (0,3), final_transformation (1,3), final_transformation (2,3));            
 
-    prevImageRGB = currImageRGB.clone();
+    prevImageIntensity = currImageIntensity.clone();
     prevImageDepth = currImageDepth.clone();
 
-    imshow("imager",currImageRGB_c); 
+    #if SHOW_2D_IMAGE
+    for (size_t i =0; i <final_correspondences->size (); i++)
+    {
+        int index = (*final_correspondences)[i].index_query;
+        circle(currImageBGR_f,currFeatures.at(index),2,CV_RGB(255,0,0));
+        circle(currImageBGR_f,prevFeatures.at(index),2,CV_RGB(0,255,0));
+        line(currImageBGR_f,prevFeatures.at(index),currFeatures.at(index),CV_RGB(0,0,255));
+    }
+  
+    imshow("imager",currImageBGR_f); 
     waitKey(1);
+    #endif
 
-    /*pcl::visualization::PCLVisualizer vis;
+    #if SHOW_3D_POINT_CLOUD
+    PointCloudIn::Ptr curr (new PointCloudIn);
+    curr->header.frame_id = "camera_depth_frame";
+    curr->height = currImageBGR_f.rows;
+    curr->width = currImageBGR_f.cols;
+
+    curr->resize(curr->height * curr->width);
+
+    ROS_INFO("Creating point cloud");
+
+    int i = 0;
+
+    for(int y = 0; y < currImageBGR_f.rows; y++)
+    {
+        for(int x = 0; x < currImageBGR_f.cols; x++)
+        {
+            PointIn& temp = curr->points[i];
+            i++;
+            temp.z = - currImageDepth.at<unsigned short>(y,x)/10;            
+            temp.x = (x - cx) * temp.z / fx; 
+            temp.y = (y - cy) * temp.z / fy;
+            temp.b = currImageBGR_f.at<cv::Vec3b>(y,x)[0];
+            temp.g = currImageBGR_f.at<cv::Vec3b>(y,x)[1];
+            temp.r = currImageBGR_f.at<cv::Vec3b>(y,x)[2];
+        }         
+    }    
+
+    curr->sensor_origin_.setZero ();
+    curr->sensor_orientation_.w () = 0.0f;
+    curr->sensor_orientation_.x () = 0.0f;
+    curr->sensor_orientation_.y () = 0.0f;
+    curr->sensor_orientation_.z () = 0.0f;   
+
+    if(prevC == NULL)
+    {
+        prevC = curr;
+    }
+
+    pcl::visualization::PCLVisualizer vis;
     //add the first cloud to the viewer
     vis.addPointCloud (prevC->makeShared(), "src_points");
        
@@ -414,22 +406,21 @@ void callback(const sensor_msgs::ImageConstPtr& msg_rgb , const sensor_msgs::Ima
     pcl::copyPointCloud<KeyPointT> (*currKeypoints,keypointDisplay);
     ROS_INFO("Adding correspondance");
 
-    KeyPointT tempo;
-    tempo.x = 0;
-    tempo.y = 0;
-    tempo.z = 0;
-    tempo.intensity = 0;
+    KeyPointT prevRobot;
+    prevRobot.x = 0;
+    prevRobot.y = 0;
+    prevRobot.z = 0;
+    prevRobot.intensity = 0;
    
-    //vis.addSphere(tempo,500,255,0,0,"Center");
+    vis.addSphere(prevRobot,10,255,0,0,"prevRobot");
 
-
-    KeyPointT tempo2;
-    tempo2.x = 0;
-    tempo2.y = 0;
-    tempo2.z = 10000;
-    tempo2.intensity = 0;
+    KeyPointT currRobot;
+    currRobot.x = 500;
+    currRobot.y = 0;
+    currRobot.z = 0;
+    currRobot.intensity = 0;
    
-    //vis.addSphere(tempo2,500,255,0,0,"Center2");
+    vis.addSphere(currRobot,10,255,0,0,"currRobot");
 
     for (size_t i =0; i <final_correspondences->size (); i++)
     { 
@@ -462,8 +453,9 @@ void callback(const sensor_msgs::ImageConstPtr& msg_rgb , const sensor_msgs::Ima
     ROS_INFO("Displaying clouds");
     vis.resetCamera ();
     vis.spin (); 
-    ROS_INFO("Complete");*/
+    ROS_INFO("Complete");
     prevC = curr;
+    #endif
 
 }
 
