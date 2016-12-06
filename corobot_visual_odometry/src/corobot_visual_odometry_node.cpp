@@ -1,45 +1,27 @@
 #include <ros/ros.h>
-#include <vector>
-#include <opencv2/core/core.hpp>
-
-#include <cmath>
-#include <bitset>
-#include <algorithm>
-
-#include <Eigen/Core>
-
-#include <sensor_msgs/PointCloud2.h>
-#include <pcl_conversions/pcl_conversions.h>
-#include <pcl_ros/point_cloud.h>
-#include <pcl/common/transforms.h>
-#include <pcl/point_types.h>
-#include <pcl/point_types_conversion.h>
-#include <pcl/point_cloud.h>
-#include <pcl/io/pcd_io.h>
-#include <pcl/registration/sample_consensus_prerejective.h>
-#include <pcl/registration/correspondence_estimation.h>
-#include <pcl/registration/correspondence_rejection_sample_consensus.h>
-#include <pcl/visualization/pcl_visualizer.h>
-#include <pcl/common/transformation_from_correspondences.h>
-
-#include <cv_bridge/cv_bridge.h>
 
 #include <sensor_msgs/Image.h>
 #include <sensor_msgs/image_encodings.h>
-
-#include <opencv2/video/tracking.hpp>
-#include <opencv2/highgui/highgui.hpp>
-#include <opencv2/calib3d/calib3d.hpp>
-#include <opencv2/core/core.hpp>
-#include <opencv2/xfeatures2d.hpp>
-#include <opencv2/imgproc/imgproc.hpp>
-#include <opencv2/photo/photo.hpp>
 
 #include <message_filters/subscriber.h>
 #include <message_filters/synchronizer.h>
 #include <message_filters/sync_policies/approximate_time.h>
 
-#define SHOW_3D_POINT_CLOUD 1
+#include <cv_bridge/cv_bridge.h>
+
+#include <opencv2/core/core.hpp>
+#include <opencv2/video/tracking.hpp>
+#include <opencv2/highgui/highgui.hpp>
+#include <opencv2/calib3d/calib3d.hpp>
+#include <opencv2/xfeatures2d.hpp>
+#include <opencv2/imgproc/imgproc.hpp>
+#include <opencv2/photo/photo.hpp>
+
+#include <pcl/point_cloud.h>
+#include <pcl/registration/correspondence_rejection_sample_consensus.h>
+#include <pcl/visualization/pcl_visualizer.h>
+
+#define SHOW_3D_POINT_CLOUD 0
 #define DEBUG 1
 #define SHOW_2D_IMAGE 1
 
@@ -467,8 +449,6 @@ int main(int argc, char** argv)
    
     message_filters::Subscriber<sensor_msgs::Image> subscriber_depth( nh , "/camera/depth_registered/image_raw" , 1 );
     message_filters::Subscriber<sensor_msgs::Image> subscriber_rgb( nh , "camera/rgb/image_raw" , 1 );
-
-    ///mobile_base/commands/velocity
 
     // ApproximateTime take a queue size as its constructor argument, hence MySyncPolicy(10)
     message_filters::Synchronizer<MySyncPolicy> sync(MySyncPolicy(10), subscriber_rgb, subscriber_depth );
