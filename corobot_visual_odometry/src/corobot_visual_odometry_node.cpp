@@ -2,6 +2,10 @@
 #include <vector>
 #include <opencv2/core/core.hpp>
 
+#include <cmath>
+#include <bitset>
+#include <algorithm>
+
 #include <Eigen/Core>
 
 #include <sensor_msgs/PointCloud2.h>
@@ -29,7 +33,6 @@
 #include <pcl/visualization/pcl_visualizer.h>
 #include <pcl/common/transformation_from_correspondences.h>
 
-#include <ros/ros.h>
 #include <cv_bridge/cv_bridge.h>
 
 #include <sensor_msgs/Image.h>
@@ -74,6 +77,8 @@ double fy = 501.7202166988847;
 double cx = 317.8102802776187;
 double cy = 248.4374439271775;
 
+double inlierThresh = 9;
+
 States state = boot;
 
 PointCloudIn::Ptr prevC;
@@ -102,6 +107,13 @@ void featureDetection(Mat img_1, vector<Point2f>& points1)
     FAST(img_1, keypoints_1, fast_threshold, nonmaxSuppression);
     KeyPoint::convert(keypoints_1, points1, vector<int>());
 } 
+
+double squaredDistanceBetween(KeyPointT point1, KeyPointT point2)
+{
+    return (point1.x - point2.x) * (point1.x - point2.x) +
+            (point1.y - point2.y) * (point1.y - point2.y) +
+            (point1.z - point2.z) * (point1.z - point2.z);
+}
 
 // Handler / callback
 void callback(const sensor_msgs::ImageConstPtr& msg_rgb , const sensor_msgs::ImageConstPtr& msg_depth)
@@ -159,9 +171,9 @@ void callback(const sensor_msgs::ImageConstPtr& msg_rgb , const sensor_msgs::Ima
         {
             PointIn& temp = curr->points[i];
             i++;
-            temp.x = (x - cx) * imageDepth.at<unsigned short>(y,x) / fx; 
-            temp.y = (y - cy) * imageDepth.at<unsigned short>(y,x) / fy;
-            temp.z = imageDepth.at<unsigned short>(y,x);
+            temp.z = imageDepth.at<unsigned short>(y,x)/10;            
+            temp.x = (x - cx) * temp.z / fx; 
+            temp.y = (y - cy) * temp.z / fy;
             temp.b = currImageRGB_cf.at<cv::Vec3b>(y,x)[0];
             temp.g = currImageRGB_cf.at<cv::Vec3b>(y,x)[1];
             temp.r = currImageRGB_cf.at<cv::Vec3b>(y,x)[2];
@@ -170,7 +182,7 @@ void callback(const sensor_msgs::ImageConstPtr& msg_rgb , const sensor_msgs::Ima
 
     curr->sensor_origin_.setZero ();
     curr->sensor_orientation_.w () = 0.0f;
-    curr->sensor_orientation_.x () = 1.0f;
+    curr->sensor_orientation_.x () = 0.0f;
     curr->sensor_orientation_.y () = 0.0f;
     curr->sensor_orientation_.z () = 0.0f;   
 
@@ -200,8 +212,6 @@ void callback(const sensor_msgs::ImageConstPtr& msg_rgb , const sensor_msgs::Ima
     KeyPointCloudT::Ptr prevKeypoints (new KeyPointCloudT);
     KeyPointCloudT::Ptr currKeypoints (new KeyPointCloudT);
 
-    int count = 0;
-
     for(int i=0;i<status.size();i++)
     {
         // mask 1 means inliers
@@ -211,35 +221,136 @@ void callback(const sensor_msgs::ImageConstPtr& msg_rgb , const sensor_msgs::Ima
         {
             // create 3D points
             KeyPointT prevPoint;
-            prevPoint.x = (prevFeatures.at(i).x - cx) * prevImageDepth.at<unsigned short>(prevFeatures.at(i)) / fx; 
-            prevPoint.y = (prevFeatures.at(i).y - cy) * prevImageDepth.at<unsigned short>(prevFeatures.at(i)) / fy;
-            prevPoint.z = prevImageDepth.at<unsigned short>(prevFeatures.at(i));
+            prevPoint.z = prevImageDepth.at<unsigned short>(prevFeatures.at(i))/10;
+            prevPoint.x = (prevFeatures.at(i).x - cx) * prevPoint.z / fx; 
+            prevPoint.y = (prevFeatures.at(i).y - cy) * prevPoint.z / fy;            
             prevPoint.intensity = prevImageRGB.at<unsigned short>(prevFeatures.at(i));
             prevKeypoints->push_back(prevPoint);
             
-            KeyPointT currPoint;            
-            currPoint.x = (currFeatures.at(i).x - cx) * currImageDepth.at<unsigned short>(currFeatures.at(i)) / fx; 
-            currPoint.y = (currFeatures.at(i).y - cy) * currImageDepth.at<unsigned short>(currFeatures.at(i)) / fy;
-            currPoint.z = currImageDepth.at<unsigned short>(currFeatures.at(i));
+            KeyPointT currPoint;  
+            currPoint.z = currImageDepth.at<unsigned short>(currFeatures.at(i))/10;           
+            currPoint.x = (currFeatures.at(i).x - cx) * currPoint.z / fx; 
+            currPoint.y = (currFeatures.at(i).y - cy) * currPoint.z / fy;    
             currPoint.intensity = currImageRGB.at<unsigned short>(currFeatures.at(i));
-            currKeypoints->push_back(currPoint);    
-
-            count++;        
+            currKeypoints->push_back(currPoint);        
 
             circle(currImageRGB_c,currFeatures.at(i),2,CV_RGB(255,0,0));
-            line(currImageRGB_c,prevFeatures.at(i),currFeatures.at(i),CV_RGB(0,255,0));
+            circle(currImageRGB_c,prevFeatures.at(i),2,CV_RGB(0,255,0));
+            line(currImageRGB_c,prevFeatures.at(i),currFeatures.at(i),CV_RGB(0,0,255));
         }
     }   
 
-    CorrespondencesPtr intial_correspondences(new pcl::Correspondences);
-    intial_correspondences->resize(count);
-    for(int i =0; i < count; i++)
+    int size = prevKeypoints->size();
+
+    // inlier detection for keypoints
+    bool m[size][size];    
+
+    // create adjuncey matrix
+    for(int i = 0; i < size; i++)
     {
-        (*intial_correspondences)[i].index_query = i;
-        (*intial_correspondences)[i].index_match = i;
+        for(int j = i; j < size; j++)
+        {
+            if(abs (squaredDistanceBetween(currKeypoints->at(i),currKeypoints->at(j))
+                - squaredDistanceBetween(prevKeypoints->at(i),prevKeypoints->at(j))) 
+                < inlierThresh)
+            {
+                m[i][j] = true;
+                m[j][i] = true;
+            }
+            else
+            {
+                m[i][j] = false;
+                m[j][i] = false;  
+            }
+        }
+    }
+
+    vector<int> clique;
+    vector<bool> potentialNodes(size,true);
+    bool anyPotentialNode = true;
+
+    while(anyPotentialNode)
+    {
+        // find node with max edges
+        int edgeMax = 0;
+        int currMax = 0;
+
+        for(int i = 0; i < size; i++)
+        {
+            if(potentialNodes[i])
+            {
+                int edgeCount = 0;
+                for(int j = 0; j < size; j++)
+                {
+                    if(m[i][j] && potentialNodes[j])
+                    {
+                        edgeCount++;
+                    }
+                }
+                if(edgeCount >= edgeMax)
+                {
+                    edgeMax = edgeCount;
+                    currMax = i;
+                }
+            }   
+        }
+
+        if(edgeMax > 0)
+        {
+            clique.push_back(currMax);
+        }
+        else
+        {
+            // important***************************************************************************
+            ROS_INFO_STREAM("No inliers");
+            break;
+        }
+    
+        // intialize potentialNodes
+        for(int i = 0; i < size; i++)
+        {
+            potentialNodes[i] = m[i][clique[0]];
+        }
+
+        // only keep nodes which are connected to all nodes in clique
+        for(int i = 1; i < clique.size(); i++)
+        {
+            for(int j = 0; j < size; j++)
+            {
+                potentialNodes[j] = potentialNodes[j] & m[j][clique[i]];
+            }
+        }
+
+        // neglect nodes which we already have
+        for(int i = 1; i < clique.size(); i++)
+        {
+            potentialNodes[clique[i]] = false;
+        }
+
+        anyPotentialNode = false;
+        for(int i = 0; i < size; i++)
+        {
+            if(potentialNodes[i])
+            {
+                anyPotentialNode = true;
+                break;    
+            }
+        } 
+    }
+
+    // remove keypoints which are not in clique
+    ROS_INFO_STREAM(clique.size());
+    ROS_INFO_STREAM("****************************************************************");
+
+    CorrespondencesPtr intial_correspondences(new pcl::Correspondences);
+    intial_correspondences->resize(clique.size());
+    for(int i =0; i < clique.size(); i++)
+    {
+        (*intial_correspondences)[i].index_query = clique[i];
+        (*intial_correspondences)[i].index_match = clique[i];
     }    
 
-    prevKeypoints->sensor_origin_.setZero ();
+    /*prevKeypoints->sensor_origin_.setZero ();
     prevKeypoints->sensor_orientation_.w () = 0.0f;
     prevKeypoints->sensor_orientation_.x () = 1.0f;
     prevKeypoints->sensor_orientation_.y () = 0.0f;
@@ -249,16 +360,16 @@ void callback(const sensor_msgs::ImageConstPtr& msg_rgb , const sensor_msgs::Ima
     currKeypoints->sensor_orientation_.w () = 0.0f;
     currKeypoints->sensor_orientation_.x () = 1.0f;
     currKeypoints->sensor_orientation_.y () = 0.0f;
-    currKeypoints->sensor_orientation_.z () = 0.0f;  
+    currKeypoints->sensor_orientation_.z () = 0.0f;*/  
 
     ROS_INFO_STREAM("Finding final correspondance.");
 
     CorrespondencesPtr final_correspondences(new pcl::Correspondences);
     registration::CorrespondenceRejectorSampleConsensus<KeyPointT> rejector;
-      rejector.setInputSource (prevKeypoints);
-      rejector.setInputTarget (currKeypoints);
+    rejector.setInputSource (prevKeypoints);
+    rejector.setInputTarget (currKeypoints);
     rejector.setInputCorrespondences(intial_correspondences);
-      rejector.getCorrespondences(*final_correspondences);    
+    rejector.getCorrespondences(*final_correspondences);    
     Eigen::Matrix4f transformation = rejector.getBestTransformation();
     
     ROS_INFO_STREAM(intial_correspondences->size());
@@ -277,13 +388,13 @@ void callback(const sensor_msgs::ImageConstPtr& msg_rgb , const sensor_msgs::Ima
     imshow("imager",currImageRGB_c); 
     waitKey(1);
 
-    pcl::visualization::PCLVisualizer vis;
+    /*pcl::visualization::PCLVisualizer vis;
     //add the first cloud to the viewer
     vis.addPointCloud (prevC->makeShared(), "src_points");
        
     //transfor the second cloud to be able to view them without overlaying each other
     Eigen::Matrix4f t;
-    t<<1,0,0,5000,
+    t<<1,0,0,500,
        0,1,0,0,
        0,0,1,0,
        0,0,0,1;
@@ -309,15 +420,23 @@ void callback(const sensor_msgs::ImageConstPtr& msg_rgb , const sensor_msgs::Ima
     tempo.z = 0;
     tempo.intensity = 0;
    
-    vis.addSphere(tempo,500,255,0,0,"Center");
+    //vis.addSphere(tempo,500,255,0,0,"Center");
+
+
+    KeyPointT tempo2;
+    tempo2.x = 0;
+    tempo2.y = 0;
+    tempo2.z = 10000;
+    tempo2.intensity = 0;
+   
+    //vis.addSphere(tempo2,500,255,0,0,"Center2");
 
     for (size_t i =0; i <final_correspondences->size (); i++)
     { 
         KeyPointT & p_src = (*prevKeypoints).points.at((*final_correspondences)[i].index_query);
         KeyPointT & p_tgt = keypointDisplay.points.at((*final_correspondences)[i].index_match);
-
      
-        p_tgt.x+=5000;
+        p_tgt.x+=500;
 
         // Draw the line
         std::stringstream ss ("line");
@@ -336,14 +455,14 @@ void callback(const sensor_msgs::ImageConstPtr& msg_rgb , const sensor_msgs::Ima
         {
             vis.addSphere(p_src,0.05,255,255,0,sss.str());
             vis.addSphere(p_tgt,0.05,255,255,0,ssss.str());
-              vis.addLine (p_src, p_tgt, 220, 24, 225, ss.str ());
+            vis.addLine (p_src, p_tgt, 220, 24, 225, ss.str ());
         }
         alter != alter;
     }
     ROS_INFO("Displaying clouds");
     vis.resetCamera ();
     vis.spin (); 
-    ROS_INFO("Complete");
+    ROS_INFO("Complete");*/
     prevC = curr;
 
 }
