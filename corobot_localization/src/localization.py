@@ -2,6 +2,7 @@
 
 import roslib; roslib.load_manifest("corobot_localization")
 import rospy
+import socket
 
 from corobot_common.msg import Pose,Wall
 from geometry_msgs.msg import Twist,PoseWithCovarianceStamped
@@ -67,6 +68,19 @@ def wall_callback(wall):
     elif wall.is_wall_right:
         ekf.use_wall_angle(wall.thetaright*pi/180.0)
 
+def runServer( junk ):
+    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    sock.bind(('', 32014))
+    while not rospy.is_shutdown():
+	connection, client_address = sock.accept()
+	try:
+	    data = connection.recv(4096)
+	    print( data )
+	except:
+	    print( "Error in communication" )
+    connection.close()
+    sock.close()
+
 def main():
     global ekf, pose_pub;
     rospy.init_node("localization")
@@ -82,6 +96,7 @@ def main():
     rospy.Subscriber("laser_pose", Pose, laser_callback)
     rospy.Subscriber("qrcode_pose", Pose, qrcode_callback)
     rospy.Subscriber("wall", Wall, wall_callback)
+    rospy.Timer( rospy.Duration(0.1), runServer, oneshot=True )
     rospy.spin()
 
 
