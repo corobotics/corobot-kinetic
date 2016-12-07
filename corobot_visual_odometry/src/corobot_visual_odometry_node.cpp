@@ -1,34 +1,31 @@
 #include <ros/ros.h>
-#include <vector>
+
+#include <sensor_msgs/Image.h>
+#include <sensor_msgs/image_encodings.h>
+
+#include <message_filters/subscriber.h>
+#include <message_filters/synchronizer.h>
+#include <message_filters/sync_policies/approximate_time.h>
+
+#include <cv_bridge/cv_bridge.h>
+
 #include <opencv2/core/core.hpp>
+#include <opencv2/video/tracking.hpp>
+#include <opencv2/highgui/highgui.hpp>
+#include <opencv2/calib3d/calib3d.hpp>
+#include <opencv2/xfeatures2d.hpp>
+#include <opencv2/imgproc/imgproc.hpp>
+#include <opencv2/photo/photo.hpp>
 
-#include <Eigen/Core>
-
-#include <sensor_msgs/PointCloud2.h>
-#include <pcl_conversions/pcl_conversions.h>
-#include <pcl_ros/point_cloud.h>
-#include <pcl/common/transforms.h>
-#include <pcl/point_types.h>
-#include <pcl/point_types_conversion.h>
 #include <pcl/point_cloud.h>
-#include <pcl/filters/filter.h>
-#include <pcl/filters/median_filter.h>
-#include <pcl/filters/statistical_outlier_removal.h>
-#include <pcl/features/pfh.h>
-#include <pcl/keypoints/harris_3d.h>
-#include <pcl/keypoints/sift_keypoint.h>
-#include <pcl/features/intensity_spin.h>
-#include <pcl/features/rift.h>
-#include <pcl/kdtree/kdtree_flann.h>
-#include <pcl/io/pcd_io.h>
-//#include <pcl/registration/icp.h>
-#include <pcl/registration/sample_consensus_prerejective.h>
-#include <pcl/registration/correspondence_estimation.h>
-//#include <pcl/segmentation/sac_segmentation.h>
 #include <pcl/registration/correspondence_rejection_sample_consensus.h>
 #include <pcl/visualization/pcl_visualizer.h>
-#include <pcl/common/transformation_from_correspondences.h>
 
+#define SHOW_3D_POINT_CLOUD 0
+#define DEBUG 1
+#define SHOW_2D_IMAGE 1
+
+using namespace std;
 using namespace cv;
 using namespace pcl;
 
@@ -36,17 +33,10 @@ using namespace pcl;
 typedef PointXYZRGB PointIn;
 typedef PointCloud<PointIn> PointCloudIn;
 
-typedef PointXYZI PointT;
-typedef PointCloud<PointT> PointCloudT;
-
-typedef Normal PointN;
-typedef PointCloud<PointN> PointCloudN;
-
 typedef PointXYZI KeyPointT;
 typedef PointCloud<KeyPointT> KeyPointCloudT;
 
-typedef PFHSignature125 FeatureT;
-typedef PointCloud<FeatureT> FeatureCloudT;
+typedef message_filters::sync_policies::ApproximateTime<sensor_msgs::Image, sensor_msgs::Image> MySyncPolicy;
 
 enum States
 {
@@ -55,234 +45,335 @@ enum States
     processing
 };
 
+double fx = 500.9883833686623;
+double fy = 501.7202166988847;
+
+double cx = 317.8102802776187;
+double cy = 248.4374439271775;
+
+double inlierThresh = 9;
+
 States state = boot;
 
-PointCloudIn::Ptr prev;
-FeatureCloudT::Ptr prev_features;  
-KeyPointCloudT::Ptr prev_KeyPoints;
+#if SHOW_3D_POINT_CLOUD
+PointCloudIn::Ptr prevC;
+#endif
 
-//Mat R_f,t_f;
+Mat prevImageIntensity;
+Mat prevImageDepth;
 
-/*void findCorrespondences (FeatureCloudT::Ptr source, FeatureCloudT::Ptr target, std::vector<int>& correspondences) 
+Eigen::Matrix4f final_transformation;
+
+void featureTracking(Mat img_1, Mat img_2, vector<Point2f>& points1, vector<Point2f>& points2, vector<uchar>& status)
 {
-	ROS_INFO_STREAM("1.1");
-	correspondences.resize (source->size());
-	ROS_INFO_STREAM("1.2");
-  	// Use a KdTree to search for the nearest matches in feature space
-  	KdTreeFLANN<FeatureT> descriptor_kdtree;
-  	descriptor_kdtree.setInputCloud (target);
-ROS_INFO_STREAM("1.3");
-  	// Find the index of the best match for each keypoint, and store it in "correspondences_out"
-  	const int k = 1;
-  	for (int i = 0; i < static_cast<int> (source->size ()); ++i)
-  	{
-		std::vector<int> k_indices (k);
-  		std::vector<float> k_squared_distances (k);
-		ROS_INFO_STREAM("1.31");  		
-		descriptor_kdtree.nearestKSearch (*source, i, k, k_indices, k_squared_distances);
-		ROS_INFO_STREAM("1.32");
-    	correspondences[i] = k_indices[0];
-  	}
-ROS_INFO_STREAM("1.44");
+    // this function track points from points1 in img1 tracks
+    // img2 and stores points in point2
+    vector<float> err;
+    Size winSize=Size(21,21);
+    TermCriteria termcrit=TermCriteria(TermCriteria::COUNT+TermCriteria::EPS, 30, 0.01);
+    calcOpticalFlowPyrLK(img_1, img_2, points1, points2, status, err, winSize, 3, termcrit, 0, 0.001);
 }
 
-void filterCorrespondences (KeyPointCloudT::Ptr& source_keypoints_, KeyPointCloudT::Ptr& target_keypoints_,std::vector<int>& target2source_, std::vector<int>& source2target_, CorrespondencesPtr& correspondences_)
+void featureDetection(Mat img_1, vector<Point2f>& points1)
 {
-	ROS_INFO_STREAM("0");
-    
-  	std::vector<std::pair<unsigned, unsigned> > correspondences;
-  	for (unsigned cIdx = 0; cIdx < source2target_.size (); ++cIdx)
-    	if (target2source_[source2target_[cIdx]] == static_cast<int> (cIdx))
-      		correspondences.push_back(std::make_pair(cIdx, source2target_[cIdx]));
-ROS_INFO_STREAM("1");
-    
-  	correspondences_->resize (correspondences.size());
-  	for (unsigned cIdx = 0; cIdx < correspondences.size(); ++cIdx)
-  	{
-    	(*correspondences_)[cIdx].index_query = correspondences[cIdx].first;
-    	(*correspondences_)[cIdx].index_match = correspondences[cIdx].second;
-  	}
-ROS_INFO_STREAM("2");
-    
-  	registration::CorrespondenceRejectorSampleConsensus<KeyPointT> rejector;
-  	rejector.setInputSource (source_keypoints_);
-  	rejector.setInputTarget (target_keypoints_);
-  	rejector.setInputCorrespondences(correspondences_);
-  	rejector.getCorrespondences(*correspondences_);
-ROS_INFO_STREAM("4");
-    
-}*/
-/*
-void determineInitialTransformation ()
+    vector<KeyPoint> keypoints_1;
+    int fast_threshold = 20;
+    bool nonmaxSuppression = true;
+    //FAST (Features from Accelerated Segment Test) corner detector
+    FAST(img_1, keypoints_1, fast_threshold, nonmaxSuppression);
+    KeyPoint::convert(keypoints_1, points1, vector<int>());
+} 
+
+double squaredDistanceBetween(KeyPointT point1, KeyPointT point2)
 {
-  	registration::TransformationEstimation<KeyPointT, KeyPointT>::Ptr transformation_estimation (new registration::TransformationEstimationSVD<KeyPointT, KeyPointT>);
-
-  	transformation_estimation->estimateRigidTransformation (*source_keypoints_, *target_keypoints_, *correspondences_, initial_transformation_matrix_);
-
-  	pcl::transformPointCloud(*source_segmented_, *source_transformed_, initial_transformation_matrix_);
+    return (point1.x - point2.x) * (point1.x - point2.x) +
+            (point1.y - point2.y) * (point1.y - point2.y) +
+            (point1.z - point2.z) * (point1.z - point2.z);
 }
-
-void determineFinalTransformation ()
-{
-  	pcl::Registration<PointXYZRGB, PointXYZRGB>::Ptr registration (new pcl::IterativeClosestPoint<PointXYZRGB, PointXYZRGB>);
-  	registration->setInputSource (source_transformed_);
-  	//registration->setInputSource (source_segmented_);
-  	registration->setInputTarget (target_segmented_);
-  	registration->setMaxCorrespondenceDistance(0.05);
-  	registration->setRANSACOutlierRejectionThreshold (0.05);
-  	registration->setTransformationEpsilon (0.000001);
-  	registration->setMaximumIterations (1000);
-  	registration->align(*source_registered_);
-  	transformation_matrix_ = registration->getFinalTransformation();
-}
-*/
 
 // Handler / callback
-void callback(const sensor_msgs::PointCloud2ConstPtr& pointer)
+void callback(const sensor_msgs::ImageConstPtr& msg_rgb , const sensor_msgs::ImageConstPtr& msg_depth)
 {
-	ROS_INFO_STREAM("Received callback");
+    cv_bridge::CvImagePtr img_ptr_rgb;
+    cv_bridge::CvImagePtr img_ptr_depth;
+
+    try
+    {
+        img_ptr_depth = cv_bridge::toCvCopy(*msg_depth, sensor_msgs::image_encodings::TYPE_16UC1);
+    }
+    catch (cv_bridge::Exception& e)
+    {
+        ROS_ERROR("cv_bridge exception:  %s getting depth", e.what());
+        return;
+    }
     
-    PointCloudIn::Ptr curr (new PointCloudIn);
+    try
+    {
+        img_ptr_rgb = cv_bridge::toCvCopy(*msg_rgb, sensor_msgs::image_encodings::BAYER_GRBG8);
+    }
+    catch (cv_bridge::Exception& e)
+    {
+        ROS_ERROR("cv_bridge exception:  %s getting rgb", e.what());
+        return;
+    }
 
-    //PointCloudT::Ptr curr (new PointCloudT);
-	KeyPointCloudT::Ptr aligned (new KeyPointCloudT);
-    PointCloudN::Ptr currN(new PointCloudN);
+    ROS_INFO("Received images");
 
-    KeyPointCloudT::Ptr curr_KeyPoints (new KeyPointCloudT);
+    Mat& currImageDepth = img_ptr_depth->image;
+    Mat& currImageBayer = img_ptr_rgb->image;
 
-	FeatureCloudT::Ptr curr_features (new FeatureCloudT);
+    Mat currImageBGR_f;
+    Mat currImageBGR;
+    Mat currImageIntensity;
+
+    cvtColor( currImageBayer, currImageBGR, COLOR_BayerGB2BGR_EA);
     
-    ROS_INFO_STREAM("Converting data, removing NaN");
-    
-    fromROSMsg(*pointer, *curr);
-    
-	std::vector<int> indices;
-	pcl::removeNaNFromPointCloud(*curr, *curr, indices);
-    
-	ROS_INFO_STREAM("Estimating Normals");
+    bilateralFilter( currImageBGR, currImageBGR_f, 9, 75, 75);
 
-    // Apply filter (noise removal) on the scene
-    
+    cvtColor( currImageBGR_f, currImageIntensity, COLOR_BGR2GRAY);
 
-    // Estimate normals for scene
-    /*IntegralImageNormalEstimation<PointIn, PointN> nest;
-    nest.setNormalEstimationMethod (nest.AVERAGE_3D_GRADIENT);
-    nest.setMaxDepthChangeFactor(0.02f);
-    nest.setNormalSmoothingSize(10.0f);
-    nest.setInputCloud(curr);
-    nest.compute(*currN);    */
-
-	NormalEstimation<PointIn, PointN> normal_estimation;
-    normal_estimation.setSearchMethod (search::Search<PointIn>::Ptr (new search::KdTree<PointIn>));
-    normal_estimation.setRadiusSearch (0.01);
-    normal_estimation.setInputCloud (curr);
-	normal_estimation.compute (*currN);
-
-    //ROS_INFO_STREAM("1:" << curr->size ());
-    //ROS_INFO_STREAM("2:" << currN->size ());
-
-    ROS_INFO_STREAM("Finding keypoints");
-
-    // Find  keypoints   
-    /*HarrisKeypoint3D<PointIn,KeyPointT> hkest;
-	hkest.setMethod(HarrisKeypoint3D<PointIn,KeyPointT>::TOMASI);
-	hkest.setNonMaxSupression (true);
-    hkest.setRadius (0.01f);
-	hkest.setRadiusSearch (0.01f);
-    hkest.setInputCloud(curr);
-    hkest.compute(*curr_KeyPoints);*/
-
-	SIFTKeypoint<PointIn, PointT> sift3D;
-    sift3D.setScales (0.01f, 3, 2);
-    sift3D.setMinimumContrast (0.0);
-	sift3D.setInputCloud(curr);
-    sift3D.compute(*curr_KeyPoints);
-
-	PointCloudIn::Ptr kpts(new PointCloudIn);
-  	kpts->points.resize(curr_KeyPoints->points.size());
-
-	pcl::copyPointCloud(*curr_KeyPoints, *kpts);
-
-	ROS_INFO_STREAM("Estimating features for keypoints");
-
-    // Estimate features for keypoints 
-    PFHEstimation<PointIn,Normal,FeatureT> pest;
- 	pest.setKSearch(50);
-	pest.setInputNormals(currN);
-   	pest.setSearchSurface(curr);    
-	pest.setInputCloud (kpts);
-	pest.compute (*curr_features);
-    
     // if this is first image store it and go to next iteration
     if(state == boot)    
     {
-		prev = curr; 
-        prev_features = curr_features;
-		prev_KeyPoints = curr_KeyPoints;
-        state = init;        
+        prevImageIntensity = currImageIntensity.clone();
+        prevImageDepth = currImageDepth.clone();
+        state = init;
         return;
     }    
+
+    vector<uchar> status;
+    vector<Point2f> currFeatures;
+    vector<Point2f> prevFeatures;
         
-	//std::vector<int> source2target;
-	//std::vector<int> target2source;
-	//findCorrespondences(prev_features,curr_features,source2target);
-	//findCorrespondences(curr_features,prev_features,target2source);
+    featureDetection(prevImageIntensity, prevFeatures);
+    featureTracking(prevImageIntensity, currImageIntensity, prevFeatures, currFeatures, status);   
 
-	ROS_INFO_STREAM("Finding intial correspondance.");
+    KeyPointCloudT::Ptr prevKeypoints (new KeyPointCloudT);
+    KeyPointCloudT::Ptr currKeypoints (new KeyPointCloudT);
 
-	ROS_INFO_STREAM(":" << prev_features->size ());
-    ROS_INFO_STREAM(":" << curr_features->size ());
- 	
-	// ... read or fill in source and target
-	CorrespondencesPtr intial_correspondences(new pcl::Correspondences);
-	registration::CorrespondenceEstimation< FeatureT, FeatureT> est;
-	est.setInputSource (prev_features);
-	est.setInputTarget (curr_features);
-	est.determineReciprocalCorrespondences (*intial_correspondences);
-
-	ROS_INFO_STREAM("Finding final correspondance.");
-
-	CorrespondencesPtr final_correspondences(new pcl::Correspondences);
-  	registration::CorrespondenceRejectorSampleConsensus<PointT> rejector;
-  	rejector.setInputSource (prev_KeyPoints);
-  	rejector.setInputTarget (curr_KeyPoints);
-  	rejector.setInputCorrespondences(intial_correspondences);
-  	rejector.getCorrespondences(*final_correspondences);	
-
-	ROS_INFO_STREAM("Finding Transformation matrix.");
-
-	Eigen::Matrix4f transformation;
-	registration::TransformationEstimationSVD<PointT,PointT> transformation_estimation;
-	transformation_estimation.estimateRigidTransformation(*prev_KeyPoints, *curr_KeyPoints, *final_correspondences, transformation);
-
-	ROS_INFO("    | %6.3f %6.3f %6.3f | \n", transformation (0,0), transformation (0,1), transformation (0,2));
-    ROS_INFO("R = | %6.3f %6.3f %6.3f | \n", transformation (1,0), transformation (1,1), transformation (1,2));
-    ROS_INFO("    | %6.3f %6.3f %6.3f | \n", transformation (2,0), transformation (2,1), transformation (2,2));
-    ROS_INFO("t = < %0.3f, %0.3f, %0.3f >\n", transformation (0,3), transformation (1,3), transformation (2,3));
-    ROS_INFO("\n");    
-
-	prev = curr;
-    prev_features = curr_features;
-	prev_KeyPoints = curr_KeyPoints;
+    for(int i=0;i<status.size();i++)
+    {
+        // mask 1 means inliers
+        if(status.at(i) == 1 
+            && prevImageDepth.at<unsigned short>(prevFeatures.at(i)) != 0
+            && currImageDepth.at<unsigned short>(currFeatures.at(i)) != 0)
+        {
+            // create 3D points
+            KeyPointT prevPoint;
+            prevPoint.z = - prevImageDepth.at<unsigned short>(prevFeatures.at(i))/10;
+            prevPoint.x = (prevFeatures.at(i).x - cx) * prevPoint.z / fx; 
+            prevPoint.y = (prevFeatures.at(i).y - cy) * prevPoint.z / fy;            
+            prevPoint.intensity = prevImageIntensity.at<unsigned short>(prevFeatures.at(i));
+            prevKeypoints->push_back(prevPoint);
             
-    /*
+            KeyPointT currPoint;  
+            currPoint.z = - currImageDepth.at<unsigned short>(currFeatures.at(i))/10;           
+            currPoint.x = (currFeatures.at(i).x - cx) * currPoint.z / fx; 
+            currPoint.y = (currFeatures.at(i).y - cy) * currPoint.z / fy;    
+            currPoint.intensity = currImageIntensity.at<unsigned short>(currFeatures.at(i));
+            currKeypoints->push_back(currPoint);        
+        }
+    }   
+
+    int size = prevKeypoints->size();
+
+    // inlier detection for keypoints
+    bool m[size][size];    
+
+    // create adjuncey matrix
+    for(int i = 0; i < size; i++)
+    {
+        for(int j = i; j < size; j++)
+        {
+            if(abs (squaredDistanceBetween(currKeypoints->at(i),currKeypoints->at(j))
+                - squaredDistanceBetween(prevKeypoints->at(i),prevKeypoints->at(j))) 
+                < inlierThresh)
+            {
+                m[i][j] = true;
+                m[j][i] = true;
+            }
+            else
+            {
+                m[i][j] = false;
+                m[j][i] = false;  
+            }
+        }
+    }
+
+    vector<int> clique;
+    vector<bool> potentialNodes(size,true);
+    bool anyPotentialNode = true;
+
+    while(anyPotentialNode)
+    {
+        // find node with max edges
+        int edgeMax = 0;
+        int currMax = 0;
+
+        for(int i = 0; i < size; i++)
+        {
+            if(potentialNodes[i])
+            {
+                int edgeCount = 0;
+                for(int j = 0; j < size; j++)
+                {
+                    if(m[i][j] && potentialNodes[j])
+                    {
+                        edgeCount++;
+                    }
+                }
+                if(edgeCount >= edgeMax)
+                {
+                    edgeMax = edgeCount;
+                    currMax = i;
+                }
+            }   
+        }
+
+        if(edgeMax > 0)
+        {
+            clique.push_back(currMax);
+        }
+
+        // intialize potentialNodes
+        for(int i = 0; i < size; i++)
+        {
+            potentialNodes[i] = m[i][clique[0]];
+        }
+
+        // only keep nodes which are connected to all nodes in clique
+        for(int i = 1; i < clique.size(); i++)
+        {
+            for(int j = 0; j < size; j++)
+            {
+                potentialNodes[j] = potentialNodes[j] & m[j][clique[i]];
+            }
+        }
+
+        // neglect nodes which we already have
+        for(int i = 1; i < clique.size(); i++)
+        {
+            potentialNodes[clique[i]] = false;
+        }
+
+        anyPotentialNode = false;
+        for(int i = 0; i < size; i++)
+        {
+            if(potentialNodes[i])
+            {
+                anyPotentialNode = true;
+                break;    
+            }
+        } 
+    }
+
+    ROS_INFO_STREAM(clique.size());
+
+    // use keypoints which are in clique
+    CorrespondencesPtr intial_correspondences(new pcl::Correspondences);
+    intial_correspondences->resize(clique.size());
+    for(int i =0; i < clique.size(); i++)
+    {
+        (*intial_correspondences)[i].index_query = clique[i];
+        (*intial_correspondences)[i].index_match = clique[i];
+    }    
+
+    ROS_INFO_STREAM("Finding final correspondance.");
+
+    CorrespondencesPtr final_correspondences(new pcl::Correspondences);
+    registration::CorrespondenceRejectorSampleConsensus<KeyPointT> rejector;
+    rejector.setInputSource (prevKeypoints);
+    rejector.setInputTarget (currKeypoints);
+    rejector.setInputCorrespondences(intial_correspondences);
+    rejector.getCorrespondences(*final_correspondences);    
+    Eigen::Matrix4f transformation = rejector.getBestTransformation();
+
+    if(state == init)
+    {
+        final_transformation = transformation;
+        state = processing;
+    }
+    else
+    {
+        final_transformation = final_transformation * transformation;
+    }
     
-    int myx = int(t_f.at<double>(0));
-    int myz = int(t_f.at<double>(2));
+    ROS_INFO_STREAM(intial_correspondences->size());
+    ROS_INFO_STREAM(final_correspondences->size());
 
-    ROS_INFO_STREAM("*X = " << myx << " Y = " << myz);*/
+    ROS_INFO_STREAM("Finding Transformation matrix.");
 
+    ROS_INFO("    | %6.3f %6.3f %6.3f | \n", final_transformation (0,0), final_transformation (0,1), final_transformation (0,2));
+    ROS_INFO("R = | %6.3f %6.3f %6.3f | \n", final_transformation (1,0), final_transformation (1,1), final_transformation (1,2));
+    ROS_INFO("    | %6.3f %6.3f %6.3f | \n", final_transformation (2,0), final_transformation (2,1), final_transformation (2,2));
+    ROS_INFO("t = < %0.3f, %0.3f, %0.3f >\n", final_transformation (0,3), final_transformation (1,3), final_transformation (2,3));            
 
-	pcl::visualization::PCLVisualizer vis;
+    prevImageIntensity = currImageIntensity.clone();
+    prevImageDepth = currImageDepth.clone();
+
+    #if SHOW_2D_IMAGE
+    for (size_t i =0; i <final_correspondences->size (); i++)
+    {
+        int index = (*final_correspondences)[i].index_query;
+        circle(currImageBGR_f,currFeatures.at(index),2,CV_RGB(255,0,0));
+        circle(currImageBGR_f,prevFeatures.at(index),2,CV_RGB(0,255,0));
+        line(currImageBGR_f,prevFeatures.at(index),currFeatures.at(index),CV_RGB(0,0,255));
+    }
+  
+    imshow("imager",currImageBGR_f); 
+    waitKey(1);
+    #endif
+
+    #if SHOW_3D_POINT_CLOUD
+    PointCloudIn::Ptr curr (new PointCloudIn);
+    curr->header.frame_id = "camera_depth_frame";
+    curr->height = currImageBGR_f.rows;
+    curr->width = currImageBGR_f.cols;
+
+    curr->resize(curr->height * curr->width);
+
+    ROS_INFO("Creating point cloud");
+
+    int i = 0;
+
+    for(int y = 0; y < currImageBGR_f.rows; y++)
+    {
+        for(int x = 0; x < currImageBGR_f.cols; x++)
+        {
+            PointIn& temp = curr->points[i];
+            i++;
+            temp.z = - currImageDepth.at<unsigned short>(y,x)/10;            
+            temp.x = (x - cx) * temp.z / fx; 
+            temp.y = (y - cy) * temp.z / fy;
+            temp.b = currImageBGR_f.at<cv::Vec3b>(y,x)[0];
+            temp.g = currImageBGR_f.at<cv::Vec3b>(y,x)[1];
+            temp.r = currImageBGR_f.at<cv::Vec3b>(y,x)[2];
+        }         
+    }    
+
+    curr->sensor_origin_.setZero ();
+    curr->sensor_orientation_.w () = 0.0f;
+    curr->sensor_orientation_.x () = 0.0f;
+    curr->sensor_orientation_.y () = 0.0f;
+    curr->sensor_orientation_.z () = 0.0f;   
+
+    if(prevC == NULL)
+    {
+        prevC = curr;
+    }
+
+    pcl::visualization::PCLVisualizer vis;
     //add the first cloud to the viewer
-    vis.addPointCloud (prev->makeShared(), "src_points");
+    vis.addPointCloud (prevC->makeShared(), "src_points");
        
     //transfor the second cloud to be able to view them without overlaying each other
     Eigen::Matrix4f t;
-    t<<1,0,0,50,
+    t<<1,0,0,500,
        0,1,0,0,
        0,0,1,0,
        0,0,0,1;
+    
+    ROS_INFO("Transforming cloud 1");
     pcl::PointCloud<pcl::PointXYZRGB> cloudview;
     pcl::transformPointCloud(*curr,cloudview,t);
 
@@ -292,51 +383,76 @@ void callback(const sensor_msgs::PointCloud2ConstPtr& pointer)
     bool alter=false;
                
     //copy the cloudNext Keypoints to keypointsDisplay to prevent altering the data in p_tgt.x+=50;
-    pcl::PointCloud<PointT> keypointDisplay;
-    pcl::copyPointCloud<PointT> (*curr_KeyPoints,keypointDisplay);
+    ROS_INFO("Adding cloud 2");    
+    pcl::PointCloud<KeyPointT> keypointDisplay;
+    pcl::copyPointCloud<KeyPointT> (*currKeypoints,keypointDisplay);
+    ROS_INFO("Adding correspondance");
 
-	for (size_t i =0; i <final_correspondences->size (); i++)
-    { 
-		PointT & p_src = (*prev_KeyPoints).points.at((*final_correspondences)[i].index_query);
-		PointT & p_tgt = keypointDisplay.points.at((*final_correspondences)[i].index_match);
-
-	 
-		p_tgt.x+=50;
-		   
-
-		// Draw the line
-		std::stringstream ss ("line");
-		ss << i;
-		std::stringstream sss ("spheresource");
-		sss << i;
-		std::stringstream ssss ("spheretarget");
-		ssss << i;
-		if(alter)
-		{
-			vis.addSphere(p_src,0.5,255,0,0,sss.str());
-		    vis.addSphere(p_tgt,0.5,255,0,0,ssss.str());
-		    vis.addLine (p_src, p_tgt, 0, 0, 255, ss.str ());       
-		}
-		else
-		{
-		    vis.addSphere(p_src,0.5,255,255,0,sss.str());
-		    vis.addSphere(p_tgt,0.5,255,255,0,ssss.str());
-		  	vis.addLine (p_src, p_tgt, 220, 24, 225, ss.str ());
-		}
-		alter != alter;
-	}
+    KeyPointT prevRobot;
+    prevRobot.x = 0;
+    prevRobot.y = 0;
+    prevRobot.z = 0;
+    prevRobot.intensity = 0;
    
+    vis.addSphere(prevRobot,10,255,0,0,"prevRobot");
+
+    KeyPointT currRobot;
+    currRobot.x = 500;
+    currRobot.y = 0;
+    currRobot.z = 0;
+    currRobot.intensity = 0;
+   
+    vis.addSphere(currRobot,10,255,0,0,"currRobot");
+
+    for (size_t i =0; i <final_correspondences->size (); i++)
+    { 
+        KeyPointT & p_src = (*prevKeypoints).points.at((*final_correspondences)[i].index_query);
+        KeyPointT & p_tgt = keypointDisplay.points.at((*final_correspondences)[i].index_match);
+     
+        p_tgt.x+=500;
+
+        // Draw the line
+        std::stringstream ss ("line");
+        ss << i;
+        std::stringstream sss ("spheresource");
+        sss << i;
+        std::stringstream ssss ("spheretarget");
+        ssss << i;
+        if(alter)
+        {
+            vis.addSphere(p_src,0.05,255,0,0,sss.str());
+            vis.addSphere(p_tgt,0.05,255,0,0,ssss.str());
+            vis.addLine (p_src, p_tgt, 0, 0, 255, ss.str ());       
+        }
+        else
+        {
+            vis.addSphere(p_src,0.05,255,255,0,sss.str());
+            vis.addSphere(p_tgt,0.05,255,255,0,ssss.str());
+            vis.addLine (p_src, p_tgt, 220, 24, 225, ss.str ());
+        }
+        alter != alter;
+    }
+    ROS_INFO("Displaying clouds");
     vis.resetCamera ();
-    vis.spin ();  
+    vis.spin (); 
+    ROS_INFO("Complete");
+    prevC = curr;
+    #endif
+
 }
 
 int main(int argc, char** argv)
 {
     // Initialize the ROS system and become a node.
-    ros::init(argc, argv, "optical_flow_node");
+    ros::init(argc, argv, "visual_odometry_node");
     ros::NodeHandle nh;
    
-    ros::Subscriber groundPlaneEdge = nh.subscribe("/camera/depth_registered/points", 1, callback);    
+    message_filters::Subscriber<sensor_msgs::Image> subscriber_depth( nh , "/camera/depth_registered/image_raw" , 1 );
+    message_filters::Subscriber<sensor_msgs::Image> subscriber_rgb( nh , "camera/rgb/image_raw" , 1 );
+
+    // ApproximateTime take a queue size as its constructor argument, hence MySyncPolicy(10)
+    message_filters::Synchronizer<MySyncPolicy> sync(MySyncPolicy(10), subscriber_rgb, subscriber_depth );
+    sync.registerCallback(boost::bind(&callback, _1, _2));
 
     ros::spin();    
        
