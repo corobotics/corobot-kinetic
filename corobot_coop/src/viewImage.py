@@ -3,6 +3,7 @@
 """
     Calculates the position of another robot based on kinect input and current odometry
 """
+import sys
 import rospy
 import cv2
 import socket
@@ -33,6 +34,8 @@ class ImageViewer():
 	self.image_sub = rospy.Subscriber("/camera/rgb/image_raw", Image, self.image_call)
 	self.pos_sub = rospy.Subscriber("/pose", Pose, self.odom_call)
 	self.scan = rospy.Subscriber("/scan", LaserScan, self.scan_call)
+	self.sock = socket.socket( socket.AF_INET, socket.SOCK_STREAM )
+	self.sock.connect( ('129.21.145.206', 32014) );
 	self.images = []
 	self.pos = []
 	self.scan = []
@@ -122,9 +125,17 @@ class ImageViewer():
 			print (ox, oy, otheta)
 			print ( scan.header.stamp )
 			rospy.loginfo( "Time: %s\t( %s, %s ) at %s radians from ( %s, %s )", str(scan.header.stamp), str(ox), str(oy), str(otheta), str(px), str(py) )
+			
+			try:
+			    msg = str(ox) + "\t" + str(oy) + "\t" + str(otheta) + "\t" + str(pos.cov[0]+2) + "\t" + str(pos.cov[4]+2) + "\t" + str(pos.cov[8]+1) + "\t";
+			    self.sock.sendall( msg );
+			except:
+			    rospy.logerr( "Communication with other robot failed" );
+			    sys.stderr.write( "Socket Communication Error, could not transfer data" );
 			break	
 	    cv2.imshow( "Test", output)
 	    cv2.waitKey(3)
+	self.sock.close()
 
     def getColor(self, x, y, radius, image ):
 	img_lab = cv2.cvtColor(image, cv2.COLOR_BGR2LAB)
