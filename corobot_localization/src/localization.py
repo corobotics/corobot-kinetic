@@ -71,13 +71,15 @@ def wall_callback(wall):
 def runServer( junk ):
     sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     sock.bind(('', 32014))
+    sock.listen( 1 );
     while not rospy.is_shutdown():
-	connection, client_address = sock.accept()
 	try:
-	    data = connection.recv(4096)
-	    print( data )
+	    connection, client_address = sock.accept()
+	    while not rospy.is_shutdown():
+	    	data = connection.recv(4096)
+	    	print( data )
 	except:
-	    print( "Error in communication" )
+	    pass	
     connection.close()
     sock.close()
 

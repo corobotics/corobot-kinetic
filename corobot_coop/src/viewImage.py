@@ -34,8 +34,6 @@ class ImageViewer():
 	self.image_sub = rospy.Subscriber("/camera/rgb/image_raw", Image, self.image_call)
 	self.pos_sub = rospy.Subscriber("/pose", Pose, self.odom_call)
 	self.scan = rospy.Subscriber("/scan", LaserScan, self.scan_call)
-	self.sock = socket.socket( socket.AF_INET, socket.SOCK_STREAM )
-	self.sock.connect( ('129.21.145.206', 32014) );
 	self.images = []
 	self.pos = []
 	self.scan = []
@@ -128,7 +126,6 @@ class ImageViewer():
 			
 			try:
 			    msg = str(ox) + "\t" + str(oy) + "\t" + str(otheta) + "\t" + str(pos.cov[0]+2) + "\t" + str(pos.cov[4]+2) + "\t" + str(pos.cov[8]+1) + "\t";
-			    self.sock.sendall( msg );
 			except:
 			    rospy.logerr( "Communication with other robot failed" );
 			    sys.stderr.write( "Socket Communication Error, could not transfer data" );
