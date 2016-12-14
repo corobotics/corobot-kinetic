@@ -5,7 +5,6 @@
   </node>
 
   <node pkg="corobot_localization" type="localization.py" name="ekf"/>
-  <node pkg="corobot_localization" type="corobot_localization_node" name="corobot_localization_node"/>
   <node pkg="corobot_obstacle_avoidance" type="obstacle_avoidance" name="obstacle_avoidance">
     <remap from="cmd_vel" to="mobile_base/commands/velocity" />
   </node>

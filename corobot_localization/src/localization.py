@@ -78,6 +78,8 @@ def runServer( junk ):
 	    while not rospy.is_shutdown():
 	    	data = connection.recv(4096)
 	    	print( data )
+	    data = connection.recv(4096)
+	    rospy.loginfo( data )
 	except:
 	    pass	
     connection.close()
