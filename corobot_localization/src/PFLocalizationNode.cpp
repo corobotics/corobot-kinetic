@@ -2,14 +2,13 @@
 #include <ros/types.h>
 #include <geometry_msgs/Point.h>
 #include <nav_msgs/Odometry.h>
+#include <sensor_msgs/LaserScan.h>
 
 #include <mutex>
 
 #include "corobot_common/GetCoMap.h"
 #include "corobot_common/Pose.h"
 #include "corobot_common/PoseArray.h"
-
-
 
 #include "ParticleFilter.h"
 
@@ -18,12 +17,14 @@ using geometry_msgs::Point;
 using nav_msgs::Odometry;
 using corobot_common::Pose;
 using corobot_common::PoseArray;
+using sensor_msgs::LaserScan;
 
 ros::Publisher particlePublisher;
 ParticleFilter* particleFilter = NULL;
 
 void odomCallback(Odometry odom);
 void goalCallback(Point goal);
+void scanCallback(LaserScan scan);
 
 typedef enum {
   STOPPED,
@@ -32,6 +33,7 @@ typedef enum {
   INITIALIZED,
   RUNNING,
   PROCESSINGODOM,
+  PROCESSINGSCAN,
   STATEMAX
 } ParticleFilterState;
 
@@ -42,6 +44,7 @@ static unsigned int debugIndex = 0;
 static unsigned counter = 0;
 
 Odometry testVector[8];
+extern int8_t testMap[40][40];
 
 std::mutex PFLocMutex;
 
@@ -87,9 +90,9 @@ int main(int argc, char **argv)
    * away the oldest ones.
    */
 
-   //ros::Subscriber odomSub = n.subscribe("odom", 10, odomCallback);
-   ros::Subscriber odomSub = n.subscribe("todom", 10, odomCallback);
+   ros::Subscriber odomSub = n.subscribe("odom", 10, odomCallback);
    ros::Subscriber goalSub = n.subscribe("goals_nav", 1, goalCallback);
+   ros::Subscriber scanSub = n.subscribe("scan", 10, scanCallback);
    
    particlePublisher = n.advertise<corobot_common::PoseArray>("particleList", 1);;
 
@@ -104,7 +107,7 @@ int main(int argc, char **argv)
 //      ROS_INFO("coMap.response.map.info.height %d!\n", coMap.response.map.info.height);
 //      ROS_INFO("coMap.response.map.info.width %d!\n", coMap.response.map.info.width);
 
-      particleFilter = new ParticleFilter(coMap.response.map, 0.5, 60);
+      particleFilter = new ParticleFilter(coMap.response.map, 0.5, 70, 1);
 /*      
       testVector[0].pose.pose.position.y = 0.1; // OK counterclock
       testVector[0].pose.pose.position.x = 0;
@@ -129,7 +132,7 @@ int main(int argc, char **argv)
       
       testVector[7].pose.pose.position.y = 0.8; // OK counterclock
       testVector[7].pose.pose.position.x = 0;
-      */
+
       
       testVector[0].pose.pose.position.x = 1.0; // OK counterclock
       testVector[0].pose.pose.position.y = 0;
@@ -170,9 +173,66 @@ int main(int argc, char **argv)
       testVector[7].pose.pose.position.y = -1;
       testVector[7].pose.pose.orientation.z = 0;
       testVector[7].pose.pose.orientation.w = 0;
-
-
+      */
+      
       particleFilterState = IDLE;
+      
+      ROS_INFO("PFLocalizationNode::%s started waiting for initialization\n", __func__);
+
+/*     
+      testMap[21][21] = 90;
+      testMap[37][20] = 90;
+      testMap[32][32] = 90;
+      testMap[20][37] = 90;
+      testMap[8][32] = 90;
+      testMap[3][20] = 90;
+      testMap[8][8] = 90;
+      testMap[20][3] = 90;
+      testMap[32][8] = 90;
+
+      int x2, y2;
+       x2 = 20;
+       y2 = 20;
+
+      particleFilter->bresenheim(20, 20, x2, y2);
+
+       x2 = 21;
+       y2 = 21;
+      particleFilter->bresenheim(20, 20, x2, y2);
+
+       x2 = 37;
+       y2 = 20;
+      particleFilter->bresenheim(20, 20, x2, y2);
+      
+       x2 = 32;
+       y2 = 32;
+      particleFilter->bresenheim(20, 20, x2, y2);
+     
+       x2 = 20;
+       y2 = 37;
+      particleFilter->bresenheim(20, 20, x2, y2);
+
+       x2 = 8;
+       y2 = 32;
+      particleFilter->bresenheim(20, 20, x2, y2);
+      
+       x2 = 3;
+       y2 = 20;
+      particleFilter->bresenheim(20, 20, x2, y2);
+      
+       x2 = 8;
+       y2 = 8;
+      particleFilter->bresenheim(20, 20, x2, y2);
+      
+       x2 = 20;
+       y2 = 3;
+      particleFilter->bresenheim(20, 20, x2, y2);
+      
+       x2 = 32;
+       y2 = 8;
+      particleFilter->bresenheim(20, 20, x2, y2);
+      */
+      
    }
    else
    {
@@ -184,19 +244,16 @@ int main(int argc, char **argv)
 
 void goalCallback(Point goal)
 {
-   ROS_INFO("goalCallback called x = %f, y = %f\n", goal.x, goal.y);
+   ROS_INFO("PFLocalizationNode::%s called x = %f, y = %f\n",  __func__, goal.x, goal.y);
       // If we recieved a new goal reinitialze the particle filter.
    if(particleFilterState == IDLE || particleFilterState == RUNNING)
    {
-     
-      
       particleFilterState = INITIALIZING;
       
       PFLocMutex.lock();
 
-      particleFilter->initialize(200);
+      particleFilter->initialize(10);
       
-//      particleFilter->initialize(10, odom);
       debugIndex = 0;
       
       PFLocMutex.unlock();      
@@ -219,12 +276,15 @@ void odomCallback(Odometry odom)
    double y_m = odom.pose.pose.position.y;
    double z_m = 0;
   
-    ROS_INFO("PFLocalizationNode::%s counter = %u\n", __func__, counter);
+   ROS_INFO("PFLocalizationNode::%s counter = %u\n", __func__, counter);
+   
    if (particleFilterState == RUNNING)
    {
       particleFilterState = PROCESSINGODOM;
-      ROS_INFO("PFLocalizationNode::%s PROCESSINGODOM x = %f, y = %f\n", __func__, x_m, y_m); 
       PFLocMutex.lock();
+      
+           
+      ROS_INFO("PFLocalizationNode::%s PROCESSINGODOM x = %f, y = %f\n", __func__, x_m, y_m); 
       
       PoseArray particles; 
 
@@ -242,21 +302,42 @@ void odomCallback(Odometry odom)
          
          for (ParticleFilter::ParticleList::iterator it=results.begin(); it != results.end(); ++it)
          {
-   //         ROS_INFO("PFLocalizationNode::%s it->pose x = %f, y = %f\n", __func__, it->pose.x, it->pose.y);
+//            ROS_INFO("PFLocalizationNode::%s it->pose x = %f, y = %f\n", __func__, it->pose.x, it->pose.y);
             particles.poses.push_back((it->pose));
          }
          
-          ROS_INFO("PFLocalizationNode::%s particles = %lu\n", __func__, particles.poses.size());
+//          ROS_INFO("PFLocalizationNode::%s particles = %lu\n", __func__, particles.poses.size());
          
-         particlePublisher.publish(particles);
+//         particlePublisher.publish(particles);
          
       }
       
+      // process the corresponding scan for the particles.
+      particleFilterState = PROCESSINGSCAN;
+
       PFLocMutex.unlock();  
-                  
-      particleFilterState = RUNNING;
    }
    
    ++counter;
    
+}
+
+void scanCallback(LaserScan scan)
+{
+   ROS_INFO("PFLocalizationNode::%s\n", __func__ );
+   
+
+   if (particleFilterState == PROCESSINGSCAN)
+   {
+      PFLocMutex.lock();
+         
+      ROS_INFO("PFLocalizationNode::%s PROCESSINGSCAN \n", __func__); 
+
+//      particleFilter->updateParticleSensorData(scan);
+   
+      // go back to processing the odom.
+      particleFilterState = RUNNING;
+      PFLocMutex.unlock();
+     
+   }
 }

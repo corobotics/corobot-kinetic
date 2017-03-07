@@ -8,6 +8,7 @@ find_package(catkin REQUIRED COMPONENTS
   corobot_common
   geometry_msgs
   nav_msgs
+  sensor_msgs
   roscpp
   rospy
 )
@@ -104,7 +105,7 @@ find_package(catkin REQUIRED COMPONENTS
 catkin_package(
 #  INCLUDE_DIRS include
 #  LIBRARIES corobot_localization
-  CATKIN_DEPENDS corobot_common geometry_msgs nav_msgs rospy
+  CATKIN_DEPENDS corobot_common geometry_msgs nav_msgs sensor_msgs rospy
 #  DEPENDS system_lib
 )
 
