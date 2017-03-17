@@ -308,7 +308,7 @@ void odomCallback(Odometry odom)
          
 //          ROS_INFO("PFLocalizationNode::%s particles = %lu\n", __func__, particles.poses.size());
          
-//         particlePublisher.publish(particles);
+         particlePublisher.publish(particles);
          
       }
       
@@ -333,7 +333,7 @@ void scanCallback(LaserScan scan)
          
       ROS_INFO("PFLocalizationNode::%s PROCESSINGSCAN \n", __func__); 
 
-//      particleFilter->updateParticleSensorData(scan);
+      particleFilter->updateParticleSensorData(scan);
    
       // go back to processing the odom.
       particleFilterState = RUNNING;

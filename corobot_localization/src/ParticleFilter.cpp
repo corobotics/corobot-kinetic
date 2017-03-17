@@ -10,12 +10,14 @@
 
 #define INVALIDLASERRANGE 0
 int8_t testMap[40][40];
+uint32_t testVector2[10][2];
 
 
 
 
 
-static const int8_t occupancyThreshold = 10;
+
+static const int8_t occupancyThreshold = 70;
 
 ParticleFilter::ParticleFilter(OccupancyGrid & map, float resamplePercentage, int orientationRangeDeg, int numLaserScans) :
 mNumOpenSpaces(0),
@@ -23,6 +25,8 @@ mNumParticles(0),
 mNumLaserScans(numLaserScans),
 mLaserScanRangeIndex(NULL),
 mLaserSanRangeAngleRad(NULL),
+mMinWeight(1000),
+mMaxWeight(0),
 mResamplePercentage(resamplePercentage),
 mResampleThreshold(0),
 mOrientationRangeDeg(orientationRangeDeg),
@@ -36,6 +40,8 @@ mInitialized(false)
    mMap = map;
    int index = 0;
    int numClosedSpaces = 0;
+   int numUndefinedSpaces = 0;
+   int numSemiClosed = 0;
    
    // Calculate the map width;
    mMapWidthm =  mMap.info.width  * mMap.info.resolution;
@@ -54,9 +60,17 @@ mInitialized(false)
          {
             ++mNumOpenSpaces;
          }
-         else
+         else if (mMap.data[index] == -1)
+         {
+            ++numUndefinedSpaces;
+         }
+         else if (mMap.data[index] == 100)
          {
             ++numClosedSpaces;
+         }
+         else
+         {
+            ++numSemiClosed;
          }
       }
    }
@@ -64,8 +78,10 @@ mInitialized(false)
    mRoombaRadiusPixels = (roombaRadiusm / mMap.info.resolution);
    
    ROS_INFO("ParticleFilter::ParticleFilter mNumOpenSpaces %d\n", mNumOpenSpaces);
+   ROS_INFO("ParticleFilter::ParticleFilter numSemiClosed %d\n", numSemiClosed);
    ROS_INFO("ParticleFilter::ParticleFilter numClosedSpaces %d\n", numClosedSpaces);
-   
+   ROS_INFO("ParticleFilter::ParticleFilter numUndefinedSpaces %d\n", numUndefinedSpaces);
+      
    // Do some precomputing for the laser scanner.
    // There are 640 values in the scan so lets precompute which ones we will need to index.
    
@@ -88,6 +104,17 @@ mInitialized(false)
    
    // Test code for the bresenheim condition.
    memset(testMap, 0, sizeof(testMap[0][0]) * 20 * 20);
+   
+   testVector2[0][0] = 368;
+   testVector2[0][1] = 300;
+   testVector2[1][0] = 591;
+   testVector2[1][1] = 300;
+   testVector2[2][0] = 913;
+   testVector2[2][1] = 300;
+   testVector2[3][0] = 1158;
+   testVector2[3][1] = 300;
+   testVector2[4][0] = 1430;
+   testVector2[4][1] = 300;
 }
 
 ParticleFilter::~ParticleFilter()
@@ -117,6 +144,8 @@ bool ParticleFilter::initialize(int numParticles)
    
    mParticles.clear();
    
+//   int debugindex = 0;
+   
 //   ROS_INFO("ParticleFilter::%s mMap.info.resolution %f\n", mMap.info.resolution);
    
    for(uint32_t y = 0; y < mMap.info.height; ++y)
@@ -130,13 +159,16 @@ bool ParticleFilter::initialize(int numParticles)
          {
             if((mNumOpenSpaces % spacesPerParticle) == 0)
             {
-               // Store the particles in meters and pixels.
-//               particle.pose.x = x * mMap.info.resolution;
-//               particle.pose.y = y * mMap.info.resolution;
+//               gridToCartesian(testVector2[debugindex][0], testVector2[debugindex][1], particle.pose.x, particle.pose.y);
                
                gridToCartesian(x, y, particle.pose.x, particle.pose.y);
                
 //               ROS_INFO("ParticleFilter::%s 1 particle.pose.x %f particle.pose.y %f x %u y %u\n", __func__, particle.pose.x, particle.pose.y, x, y);
+
+//                ROS_INFO("ParticleFilter::%s 1 particle.pose.x %f particle.pose.y %f x %u y %u\n", __func__, particle.pose.x, particle.pose.y, testVector2[debugindex][0], testVector2[debugindex][1]);
+            
+//               particle.poseXpixels = testVector2[debugindex][0];
+//               particle.poseYpixels = testVector2[debugindex][1];
                
                particle.poseXpixels = x;
                particle.poseYpixels = y;
@@ -151,6 +183,8 @@ bool ParticleFilter::initialize(int numParticles)
                 particle.weight = 1;
                
                mParticles.push_back (particle);
+               
+//               ++debugindex;
             }
             
             ++mNumOpenSpaces;
@@ -194,9 +228,9 @@ void ParticleFilter::resample()
    float cumWeight = 0;
    bool changeOrientation = false;
    double temp = 0;
-
+   float weightRange = mMaxWeight - mMinWeight;
    
-//   ROS_INFO("ParticleFilter::%s called\n", __func__);
+   ROS_INFO("ParticleFilter::%s called\n", __func__);
    // first write the test code since we need it.
    // Initialize the weights to values [0..1]
 /*   
@@ -210,7 +244,8 @@ void ParticleFilter::resample()
    // Just calculate the cumulative weight.
    for(ParticleFilter::ParticleList::iterator it = mParticles.begin(); it != mParticles.end(); ++it)
    {
-//         it->weight = ((it->weight - minWeight)/weightRange);
+      // first normalize the particles weight.
+      it->weight = ((it->weight - mMinWeight)/ weightRange);
       //ROS_INFO("ParticleFilter::%s called normalized it->weight %f\n", __func__, it->weight);
       
       // Now that things are normalized lets generate our cumsum vector;
@@ -401,15 +436,18 @@ void ParticleFilter::updateParticleSensorData(LaserScan& scan)
 //   if(mInitialized == false)
    {
       ROS_INFO("ParticleFilter::%s  mInitialized = false  Process laser data.\n", __func__);
-
+      
+      mMaxWeight = 0; 
+      mMinWeight = 1000;
+      
       // Check to see if the laser data matches the particle. 
       ParticleFilter::ParticleList::iterator it = mParticles.begin();
  
       float scanThetaRad = 0;
-      float laserEndXm = 0;
-      float laserEndYm = 0;
-      int laserEndXpixel = 0;
-      int laserEndYpixel = 0;
+      double laserEndXm = 0;
+      double laserEndYm = 0;
+      uint32_t laserEndXpixel = 0;
+      uint32_t laserEndYpixel = 0;
       float particleLaserRangem = 0;
       
       bool occupied = false;
@@ -420,10 +458,14 @@ void ParticleFilter::updateParticleSensorData(LaserScan& scan)
          
          ROS_INFO("ParticleFilter::%s it->pose x = %f, y = %f\n", __func__, it->pose.x, it->pose.y);
          
+         // Make sure we reset the weight before we begin the scan.
+         it->weight = 1;
+         
          // examine each scan and see if it intersects.
          for(int i = 0; i < mNumLaserScans; ++i)
          {
-            particleLaserRangem = 0;
+            // set it to the max.
+            particleLaserRangem = mLaserRangeMaxm;
                         
             scanThetaRad = it->pose.theta + mLaserSanRangeAngleRad[i];
             scanThetaRad = wrapTo2Pi(scanThetaRad);
@@ -485,9 +527,8 @@ void ParticleFilter::updateParticleSensorData(LaserScan& scan)
                }
             }
             
-            // Now we can do the ray tracing.
-            laserEndXpixel = laserEndXm / mMap.info.resolution;
-            laserEndYpixel = laserEndYm / mMap.info.resolution;
+            // Now we can do the ray tracing.            
+            ParticleFilter::cartesianToGrid(laserEndXm,laserEndYm, laserEndXpixel, laserEndYpixel);
             
             occupied = bresenheim(it->poseXpixels, it->poseYpixels,  laserEndXpixel, laserEndYpixel);
             
@@ -496,13 +537,27 @@ void ParticleFilter::updateParticleSensorData(LaserScan& scan)
             // were calculating everything in meters;
             if(occupied)
             {
-               ROS_INFO("ParticleFilter::%s occupied it->poseXpixels %f it->poseYpixels %f laserEndXpixel %d laserEndYpixel %d\n", __func__, it->pose.x, it->pose.y, laserEndXpixel, laserEndYpixel);
                
-               particleLaserRangem = sqrt(pow((it->pose.x - laserEndXpixel * mMap.info.resolution), 2) + pow((it->pose.y - laserEndYpixel * mMap.info.resolution), 2));
+               ParticleFilter::gridToCartesian(laserEndXpixel, laserEndYpixel, laserEndXm, laserEndYm);
+               
+               ROS_INFO("ParticleFilter::%s occupied it->pose.x %f it->pose.y %f laserEndXm %f laserEndYm %f\n", __func__, it->pose.x, it->pose.y, laserEndXm, laserEndYm);
+               
+               particleLaserRangem = sqrt(pow((it->pose.x - laserEndXm), 2) + pow((it->pose.y - laserEndYm), 2));
                ROS_INFO("ParticleFilter::%s occupied particleLaserRangem %f\n", __func__, particleLaserRangem);
+               
+               it->weight *= getLaserProbability(scan.ranges[mLaserScanRangeIndex[i]], particleLaserRangem);
             }
-            
-           
+         }
+         
+         // Update the min and max weights for normalization.
+         if( it->weight < mMinWeight)
+         {
+            mMinWeight = it->weight;
+         }
+         
+         if( it->weight > mMaxWeight)
+         {
+            mMaxWeight = it->weight;
          }
          
          ++it;
@@ -530,9 +585,9 @@ float ParticleFilter::wrapTo2Pi(float theta)
 }
 
 
-bool ParticleFilter::bresenheim(int x1pixel, int y1pixel, int& x2pixel, int& y2pixel)
+bool ParticleFilter::bresenheim(uint32_t x1pixel, uint32_t y1pixel, uint32_t& x2pixel, uint32_t& y2pixel)
 {
-   ROS_INFO("ParticleFilter::%s  start x1pixel %d y1pixel %d x2pixel %d y2pixel %d\n", __func__, x1pixel, y1pixel, x2pixel, y2pixel);
+   ROS_INFO("ParticleFilter::%s  start x1pixel %u y1pixel %u x2pixel %u y2pixel %u\n", __func__, x1pixel, y1pixel, x2pixel, y2pixel);
    bool occupied = false;
    
    if(x1pixel == x2pixel && y1pixel == y2pixel)
@@ -544,12 +599,12 @@ bool ParticleFilter::bresenheim(int x1pixel, int y1pixel, int& x2pixel, int& y2p
    }
    else
    {
-      float dxpixel = x2pixel - x1pixel;
-      float dypixel = y2pixel - y1pixel;
+      // gotta cast em otherwise you get uint wrap around.
+      float dxpixel = (int) x2pixel - (int) x1pixel;
+      float dypixel = (int) y2pixel - (int) y1pixel;
       
       int incX = (dxpixel < 0) ? -1 : 1;
       int incY = (dypixel < 0) ? -1 : 1;
-      
       
       float m = 0;
       float b = 0;
@@ -561,9 +616,9 @@ bool ParticleFilter::bresenheim(int x1pixel, int y1pixel, int& x2pixel, int& y2p
       {
          int tempXpixel = x1pixel;
          m = dypixel/dxpixel;
-         ROS_INFO("ParticleFilter::%s  m %f\n", __func__, m);
+//         ROS_INFO("ParticleFilter::%s  m %f\n", __func__, m);
          b = y1pixel - m * x1pixel;
-         ROS_INFO("ParticleFilter::%s  b %f\n", __func__, b);
+//         ROS_INFO("ParticleFilter::%s  b %f\n", __func__, b);
          
          while(tempXpixel != x2pixel && occupied == false)
          {
@@ -586,15 +641,14 @@ bool ParticleFilter::bresenheim(int x1pixel, int y1pixel, int& x2pixel, int& y2p
             x2pixel = tempXpixel;
             y2pixel = (m * tempXpixel +  b);
          }
-         
       }
       else
       {
          int tempYpixel = y1pixel;
          m = dxpixel/dypixel;
-         ROS_INFO("ParticleFilter::%s  m %f\n", __func__, m);
+//         ROS_INFO("ParticleFilter::%s  m %f\n", __func__, m);
          b = x1pixel - m * y1pixel;
-         ROS_INFO("ParticleFilter::%s  b %f\n", __func__, b);
+//         ROS_INFO("ParticleFilter::%s  b %f\n", __func__, b);
          
          while(tempYpixel != y2pixel && occupied == false)
          {
@@ -621,17 +675,15 @@ bool ParticleFilter::bresenheim(int x1pixel, int y1pixel, int& x2pixel, int& y2p
       }
    }
    
-   ROS_INFO("ParticleFilter::%s  end x2pixel %d y2pixel %d occupied %d\n", __func__, x2pixel, y2pixel, occupied);
+   ROS_INFO("ParticleFilter::%s  end x2pixel %u y2pixel %u occupied %d\n", __func__, x2pixel, y2pixel, occupied);
    return occupied;
 }
 
 bool ParticleFilter::bresenheimCondition(int xpixel, int ypixel)
-{
+{  
    bool occupied = false;
      
    int index = xpixel + ypixel * mMap.info.width;
-
-   
   
 //    if(testMap[xpixel][ypixel]  > occupancyThreshold)
    if (mMap.data[index] > occupancyThreshold)
@@ -693,16 +745,19 @@ float ParticleFilter::getLaserProbability(float observedm, float expectedm)
    return probability;
 }
 
-void ParticleFilter::cartesianToGrid(double x, double y, uint32_t& xpixel, uint32_t& ypixel)
+void ParticleFilter::cartesianToGrid(double xm, double ym, uint32_t& xpixel, uint32_t& ypixel)
  {
-    xpixel = x / mMap.info.resolution;
-    ypixel = mMap.info.height - ( y / mMap.info.resolution);
+    // The origin of the grid map matches cartesian coordinates. This does not match the map in any 
+    // other part of the system.
+    xpixel = xm / mMap.info.resolution;
+    ypixel = ym / mMap.info.resolution;
  }
  
-void ParticleFilter::gridToCartesian(uint32_t xpixel, uint32_t ypixel, double& x, double& y)
+void ParticleFilter::gridToCartesian(uint32_t xpixel, uint32_t ypixel, double& xm, double& ym)
 {
-    x = xpixel * mMap.info.resolution;
-    y = (mMap.info.height - ypixel) * mMap.info.resolution;
-    
+    // The origin of the grid map matches cartesian coordinates. This does not match the map in any 
+    // other part of the system.
+    xm = xpixel * mMap.info.resolution;
+    ym = ypixel * mMap.info.resolution;
 }
    

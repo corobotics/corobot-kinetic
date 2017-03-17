@@ -48,7 +48,7 @@ class ParticleFilter
       void updateParticleSensorData(LaserScan& scan);
       
       // Test code
-      bool bresenheim(int x1pixel, int y1pixel, int& x2pixel, int& y2pixel);
+//      bool bresenheim(int x1pixel, int y1pixel, int& x2pixel, int& y2pixel);
       
    private:
    
@@ -65,7 +65,7 @@ class ParticleFilter
       
       // This is a port from  CODE GENIUS - Drawing Lines with Bresenham's Line Algorithm by Jenn Schiffer
       // https://www.youtube.com/watch?v=zytBpLlSHms
-//      bool bresenheim(int x1pixel, int y1pixel, int& x2pixel, int& y2pixel);
+      bool bresenheim(uint32_t x1pixel, uint32_t y1pixel, uint32_t& x2pixel, uint32_t& y2pixel);
       
       // This is a port from corobot-kinetic\corobot_localization\src\bresenheim.py
       bool bresenheimCondition(int xpixel, int ypixel);
@@ -77,15 +77,19 @@ class ParticleFilter
       
       // this is a utility function that will convert from cartesian to the grid
       // coordinate system.  
-      void cartesianToGrid(double x, double y, uint32_t& xpixel, uint32_t& ypixel);
+      void cartesianToGrid(double xm, double ym, uint32_t& xpixel, uint32_t& ypixel);
       
       // this is a utility function that will convert from cartesian to the grid
       // coordinate system.  
-      void gridToCartesian(uint32_t xpixel, uint32_t ypixel, double& x, double& y);
+      void gridToCartesian(uint32_t xpixel, uint32_t ypixel, double& xm, double& ym);
       
       Pose mLastPose;
-   
+      
+      // the origin of the grid map matches cartesian coordinates. This does not match the map in 
+      // any other part of the system.
       OccupancyGrid mMap;
+      
+      
       float mMapWidthm;
       float mMapHeightm;
 
@@ -97,6 +101,8 @@ class ParticleFilter
       int mNumLaserScans;
       int* mLaserScanRangeIndex;
       float *mLaserSanRangeAngleRad;
+      float mMinWeight;
+      float mMaxWeight;
       
       
       int mOrientationRangeDeg;
