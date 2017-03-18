@@ -32,7 +32,9 @@ typedef enum {
   INITIALIZING,
   INITIALIZED,
   RUNNING,
+  PROCESSODOM,
   PROCESSINGODOM,
+  PROCESSSCAN,
   PROCESSINGSCAN,
   STATEMAX
 } ParticleFilterState;
@@ -107,7 +109,7 @@ int main(int argc, char **argv)
 //      ROS_INFO("coMap.response.map.info.height %d!\n", coMap.response.map.info.height);
 //      ROS_INFO("coMap.response.map.info.width %d!\n", coMap.response.map.info.width);
 
-      particleFilter = new ParticleFilter(coMap.response.map, 0.5, 70, 1);
+      particleFilter = new ParticleFilter(coMap.response.map, 0.3, 114, 3);
 /*      
       testVector[0].pose.pose.position.y = 0.1; // OK counterclock
       testVector[0].pose.pose.position.x = 0;
@@ -260,7 +262,7 @@ void goalCallback(Point goal)
             
       ROS_INFO("PFLocalizationNode::%s initialization completed\n", __func__);
  
-      particleFilterState = RUNNING;
+      particleFilterState = PROCESSODOM;
 
    } 
    else
@@ -278,12 +280,11 @@ void odomCallback(Odometry odom)
   
    ROS_INFO("PFLocalizationNode::%s counter = %u\n", __func__, counter);
    
-   if (particleFilterState == RUNNING)
+   if (particleFilterState == PROCESSODOM)
    {
       particleFilterState = PROCESSINGODOM;
       PFLocMutex.lock();
-      
-           
+     
       ROS_INFO("PFLocalizationNode::%s PROCESSINGODOM x = %f, y = %f\n", __func__, x_m, y_m); 
       
       PoseArray particles; 
@@ -313,7 +314,7 @@ void odomCallback(Odometry odom)
       }
       
       // process the corresponding scan for the particles.
-      particleFilterState = PROCESSINGSCAN;
+      particleFilterState = PROCESSSCAN;
 
       PFLocMutex.unlock();  
    }
@@ -327,8 +328,9 @@ void scanCallback(LaserScan scan)
    ROS_INFO("PFLocalizationNode::%s\n", __func__ );
    
 
-   if (particleFilterState == PROCESSINGSCAN)
+   if (particleFilterState == PROCESSSCAN)
    {
+      particleFilterState = PROCESSINGSCAN;
       PFLocMutex.lock();
          
       ROS_INFO("PFLocalizationNode::%s PROCESSINGSCAN \n", __func__); 
@@ -336,8 +338,7 @@ void scanCallback(LaserScan scan)
       particleFilter->updateParticleSensorData(scan);
    
       // go back to processing the odom.
-      particleFilterState = RUNNING;
+      particleFilterState = PROCESSODOM;
       PFLocMutex.unlock();
-     
    }
 }

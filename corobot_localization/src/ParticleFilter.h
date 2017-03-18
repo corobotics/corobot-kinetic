@@ -43,7 +43,7 @@ class ParticleFilter
       
       ParticleList& getParticleList() {return mParticles;};
       
-      void updateParticlePositions(Odometry& odom);
+      void updateParticlePositions(Odometry odom);
       
       void updateParticleSensorData(LaserScan& scan);
       

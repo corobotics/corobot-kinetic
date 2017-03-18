@@ -4,7 +4,7 @@
 
 #include <algorithm>
 #include <cstdlib>
-#include <math.h>
+#include <cmath>
 #include <vector>
 #include <cstring>
 
@@ -13,7 +13,9 @@ int8_t testMap[40][40];
 uint32_t testVector2[10][2];
 
 
-
+static const float laserRangeMinm = 0.45;
+static const float laserRangeMaxm = 10.0;
+static const float laserRangeMidpointm = (laserRangeMinm + laserRangeMaxm) / 2;
 
 
 
@@ -25,7 +27,7 @@ mNumParticles(0),
 mNumLaserScans(numLaserScans),
 mLaserScanRangeIndex(NULL),
 mLaserSanRangeAngleRad(NULL),
-mMinWeight(1000),
+mMinWeight(100),
 mMaxWeight(0),
 mResamplePercentage(resamplePercentage),
 mResampleThreshold(0),
@@ -76,11 +78,12 @@ mInitialized(false)
    }
    
    mRoombaRadiusPixels = (roombaRadiusm / mMap.info.resolution);
-   
+/*   
    ROS_INFO("ParticleFilter::ParticleFilter mNumOpenSpaces %d\n", mNumOpenSpaces);
    ROS_INFO("ParticleFilter::ParticleFilter numSemiClosed %d\n", numSemiClosed);
    ROS_INFO("ParticleFilter::ParticleFilter numClosedSpaces %d\n", numClosedSpaces);
    ROS_INFO("ParticleFilter::ParticleFilter numUndefinedSpaces %d\n", numUndefinedSpaces);
+*/
       
    // Do some precomputing for the laser scanner.
    // There are 640 values in the scan so lets precompute which ones we will need to index.
@@ -98,8 +101,8 @@ mInitialized(false)
       mLaserScanRangeIndex[i] = laserScanIndexIncrement * (i+1);
       mLaserSanRangeAngleRad[i] = scan_angle_min + (scan_angle_increment * mLaserScanRangeIndex[i]);
       
-//      ROS_INFO("ParticleFilter::ParticleFilter mLaserScanRangeIndex[%d] %d\n", i, mLaserScanRangeIndex[i]);
-//      ROS_INFO("ParticleFilter::ParticleFilter mLaserSanRangeAngleRad[%d] %f\n", i, mLaserSanRangeAngleRad[i]);
+      ROS_INFO("ParticleFilter::ParticleFilter mLaserScanRangeIndex[%d] %d\n", i, mLaserScanRangeIndex[i]);
+      ROS_INFO("ParticleFilter::ParticleFilter mLaserSanRangeAngleRad[%d] %f\n", i, mLaserSanRangeAngleRad[i]);
    }
    
    // Test code for the bresenheim condition.
@@ -321,7 +324,7 @@ void ParticleFilter::resample()
    mParticles = newParticles;
 }
 
-void ParticleFilter::updateParticlePositions(Odometry& odom)
+void ParticleFilter::updateParticlePositions(Odometry odom)
 {
    Pose currentPose;
    Pose diffPose;
@@ -433,7 +436,7 @@ void ParticleFilter::updateParticleSensorData(LaserScan& scan)
 //        ROS_INFO("ParticleFilter::%s  range_max %f\n", __func__, scan.range_max);
    
    // The particle positions need to be updated at least once before we do the scanner information.
-//   if(mInitialized == false)
+   if(mInitialized == false)
    {
       ROS_INFO("ParticleFilter::%s  mInitialized = false  Process laser data.\n", __func__);
       
@@ -450,13 +453,18 @@ void ParticleFilter::updateParticleSensorData(LaserScan& scan)
       uint32_t laserEndYpixel = 0;
       float particleLaserRangem = 0;
       
+      // Reset the min and max weights in case we need to repopulate.
+      mMinWeight = 100;
+      mMaxWeight = 0;
+      
+      
       bool occupied = false;
       
       while ( it != mParticles.end())
       {
          occupied = false;
          
-         ROS_INFO("ParticleFilter::%s it->pose x = %f, y = %f\n", __func__, it->pose.x, it->pose.y);
+//         ROS_INFO("ParticleFilter::%s Particle position it->pose x = %f, y = %f\n", __func__, it->pose.x, it->pose.y);
          
          // Make sure we reset the weight before we begin the scan.
          it->weight = 1;
@@ -464,18 +472,19 @@ void ParticleFilter::updateParticleSensorData(LaserScan& scan)
          // examine each scan and see if it intersects.
          for(int i = 0; i < mNumLaserScans; ++i)
          {
+             ROS_INFO("ParticleFilter::%s scan %d", __func__, i);
             // set it to the max.
-            particleLaserRangem = mLaserRangeMaxm;
+            particleLaserRangem = laserRangeMaxm;
                         
             scanThetaRad = it->pose.theta + mLaserSanRangeAngleRad[i];
             scanThetaRad = wrapTo2Pi(scanThetaRad);
             
-            ROS_INFO("ParticleFilter::%s it->pose.theta %f\n", __func__, it->pose.theta); 
-            ROS_INFO("ParticleFilter::%s it->scanThetaRad %f\n", __func__, scanThetaRad); 
+//            ROS_INFO("ParticleFilter::%s it->pose.theta %f\n", __func__, it->pose.theta); 
+//            ROS_INFO("ParticleFilter::%s it->scanThetaRad %f\n", __func__, scanThetaRad); 
             
             // Get the end point of the laser reading in meters.
-            laserEndXm = it->pose.x  + mLaserRangeMaxm * cos(scanThetaRad);
-            laserEndYm = it->pose.y  +  mLaserRangeMaxm * sin(scanThetaRad);
+            laserEndXm = it->pose.x  + laserRangeMaxm * cos(scanThetaRad);
+            laserEndYm = it->pose.y  +  laserRangeMaxm * sin(scanThetaRad);
             
             // Make sure the laser stays in left and right sides of the map. 
             
@@ -532,20 +541,19 @@ void ParticleFilter::updateParticleSensorData(LaserScan& scan)
             
             occupied = bresenheim(it->poseXpixels, it->poseYpixels,  laserEndXpixel, laserEndYpixel);
             
-            ROS_INFO("ParticleFilter::%s occupied %d\n", __func__, occupied);
             // Hey we got something!!  Calculate the range to the laser.
             // were calculating everything in meters;
             if(occupied)
             {
-               
                ParticleFilter::gridToCartesian(laserEndXpixel, laserEndYpixel, laserEndXm, laserEndYm);
                
-               ROS_INFO("ParticleFilter::%s occupied it->pose.x %f it->pose.y %f laserEndXm %f laserEndYm %f\n", __func__, it->pose.x, it->pose.y, laserEndXm, laserEndYm);
+//               ROS_INFO("ParticleFilter::%s occupied it->pose.x %f it->pose.y %f laserEndXm %f laserEndYm %f\n", __func__, it->pose.x, it->pose.y, laserEndXm, laserEndYm);
                
                particleLaserRangem = sqrt(pow((it->pose.x - laserEndXm), 2) + pow((it->pose.y - laserEndYm), 2));
-               ROS_INFO("ParticleFilter::%s occupied particleLaserRangem %f\n", __func__, particleLaserRangem);
                
                it->weight *= getLaserProbability(scan.ranges[mLaserScanRangeIndex[i]], particleLaserRangem);
+               
+               ROS_INFO("ParticleFilter::%s occupied particleLaserRangem %f it->weight %f\n", __func__, particleLaserRangem, it->weight);
             }
          }
          
@@ -587,7 +595,7 @@ float ParticleFilter::wrapTo2Pi(float theta)
 
 bool ParticleFilter::bresenheim(uint32_t x1pixel, uint32_t y1pixel, uint32_t& x2pixel, uint32_t& y2pixel)
 {
-   ROS_INFO("ParticleFilter::%s  start x1pixel %u y1pixel %u x2pixel %u y2pixel %u\n", __func__, x1pixel, y1pixel, x2pixel, y2pixel);
+//   ROS_INFO("ParticleFilter::%s  start x1pixel %u y1pixel %u x2pixel %u y2pixel %u\n", __func__, x1pixel, y1pixel, x2pixel, y2pixel);
    bool occupied = false;
    
    if(x1pixel == x2pixel && y1pixel == y2pixel)
@@ -675,7 +683,7 @@ bool ParticleFilter::bresenheim(uint32_t x1pixel, uint32_t y1pixel, uint32_t& x2
       }
    }
    
-   ROS_INFO("ParticleFilter::%s  end x2pixel %u y2pixel %u occupied %d\n", __func__, x2pixel, y2pixel, occupied);
+//   ROS_INFO("ParticleFilter::%s  end x2pixel %u y2pixel %u occupied %d\n", __func__, x2pixel, y2pixel, occupied);
    return occupied;
 }
 
@@ -692,56 +700,94 @@ bool ParticleFilter::bresenheimCondition(int xpixel, int ypixel)
    }
    
 //   ROS_INFO("ParticleFilter::%s  xpixel %d ypixel %d occupied %d\n", __func__, xpixel, ypixel, occupied);
-   
+
    return occupied;
 }
 
 float ParticleFilter::getLaserProbability(float observedm, float expectedm)
 {
    
-    // probability on y axis
-    float p1 = 0.4; // obstacle closer than expected
-    float p2 = 0.6; // obstacle near expected
-    float p3 = 0.2; // obstacle farther than expected
+   // probability on y axis
+   float p1 = 0.4; // obstacle closer than expected
+   float p2 = 0.6; // obstacle is about where you expect it.
+   float p3 = 0.2; // obstacle farther than expected
 
-    // differences on x axis
-    float d1 = 0.8;
-    float d2 = 0.95;
-    float d3 = 1.05;
-    float d4 = 1.2;
+   // differences on x axis
+   float d1 = 0.8;
+   float d2 = 0.95;
+   float d3 = 1.05;
+   float d4 = 1.2;
     
-    float probability = 1.0;
+   float probability = p2;
     
-    // this will help in the case were the particle and the laser are NANs.
-
-    // If the laser data is valid then process it. This also handles the case were
-    // both the laser and the particle are outside of the valid ranges by returning 1.0
-    if(observedm >= mLaserRangeMinm  || observedm <= mLaserRangeMaxm)
-    {
-      float ratio = observedm / expectedm;
-      
-       if(ratio <= d1)
-       {
-           probability = p1;
-       }
-       else if (ratio > d1 && ratio <= d2)
-       {
-           probability = (((p2 - p1)*(ratio - d1))/(d2 - d1)) + p1;
-       }
-       else if (ratio > d2 && ratio <= d3)
-       {
-           probability = p2;
-       }
-       else if (ratio > d3 and ratio <= d4)
-       {
-           probability =(((p3 - p2)*(ratio - d3))/(d4 - d3)) + p2;
-       }
-       else
-       {
-           return p3;
-       }
-    }
+//   ROS_INFO("ParticleFilter::%s  observedm %f expectedm %f", __func__, observedm, expectedm);
    
+   // the default case is were the observed and expected fall outside of the laserRangeMinm and the laserRangeMaxm.  Since both 
+   
+   if(std::isnan(observedm))
+   {
+      // Case: Observed is NAN laser contains valid data.
+      // calculate a probability based on the midpoint of 0.45 to 10.0
+      if (expectedm >= laserRangeMinm && expectedm <= laserRangeMaxm)
+      {
+         float ratio = laserRangeMidpointm / expectedm;
+         
+//         ROS_INFO("ParticleFilter::%s  ratio %f", __func__, ratio);
+         
+         if(ratio <= d1)
+         {
+            probability = p1;
+         }
+         else if (ratio > d1 && ratio <= d2)
+         {
+            probability = (((p2 - p1)*(ratio - d1))/(d2 - d1)) + p1;
+         }
+         else if (ratio > d2 && ratio <= d3)
+         {
+            probability = p2;
+         }
+         else if (ratio > d3 and ratio <= d4)
+         {
+            probability =(((p3 - p2)*(ratio - d3))/(d4 - d3)) + p2;
+         }
+         else
+         {
+            return p3;
+         }
+      }
+   }
+   else
+   {
+      // If the laser data is valid then process it. This also handles the case were
+      // both the laser and the particle are outside of the valid ranges by returning 1.0
+      if(observedm >= laserRangeMinm  || observedm <= laserRangeMaxm)
+      {
+         float ratio = observedm / expectedm;
+         
+//         ROS_INFO("ParticleFilter::%s  ratio %f", __func__, ratio);
+         
+         if(ratio <= d1)
+         {
+            probability = p1;
+         }
+         else if (ratio > d1 && ratio <= d2)
+         {
+            probability = (((p2 - p1)*(ratio - d1))/(d2 - d1)) + p1;
+         }
+         else if (ratio > d2 && ratio <= d3)
+         {
+            probability = p2;
+         }
+         else if (ratio > d3 and ratio <= d4)
+         {
+            probability =(((p3 - p2)*(ratio - d3))/(d4 - d3)) + p2;
+         }
+         else
+         {
+            return p3;
+         }
+      }
+   }
    return probability;
 }
 
