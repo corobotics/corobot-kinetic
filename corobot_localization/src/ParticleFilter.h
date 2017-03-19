@@ -111,9 +111,6 @@ class ParticleFilter
       
       uint32_t mRoombaRadiusPixels;
       bool mInitialized; 
-      
-      const float mLaserRangeMinm = 0.45;
-      const float mLaserRangeMaxm = 10.0;
 };
 
 

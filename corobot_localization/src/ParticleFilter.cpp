@@ -396,14 +396,14 @@ void ParticleFilter::updateParticlePositions(Odometry odom)
          if( it->poseXpixels < mRoombaRadiusPixels || it->poseXpixels > (mMap.info.width - mRoombaRadiusPixels) ||
              it->poseYpixels < mRoombaRadiusPixels || it->poseYpixels > (mMap.info.height - mRoombaRadiusPixels))
          {
-             ROS_INFO("ParticleFilter::%s erasing it->pose.theta %f (off the map)\n", __func__, it->pose.theta);
+//             ROS_INFO("ParticleFilter::%s erasing it->pose.theta %f (off the map)\n", __func__, it->pose.theta);
              it = mParticles.erase(it);
          }
          else if (mMap.data[index] != 0)
          {
              // Check to see if we crashed into a wall.
              uint8_t temp = mMap.data[index];
-             ROS_INFO("ParticleFilter::%s erasing it->pose.theta %f mapdata = %d\n", __func__, it->pose.theta, temp);
+//             ROS_INFO("ParticleFilter::%s erasing it->pose.theta %f mapdata = %d\n", __func__, it->pose.theta, temp);
              it = mParticles.erase(it);
          }
          else
@@ -472,7 +472,7 @@ void ParticleFilter::updateParticleSensorData(LaserScan& scan)
          // examine each scan and see if it intersects.
          for(int i = 0; i < mNumLaserScans; ++i)
          {
-             ROS_INFO("ParticleFilter::%s scan %d", __func__, i);
+//             ROS_INFO("ParticleFilter::%s scan %d", __func__, i);
             // set it to the max.
             particleLaserRangem = laserRangeMaxm;
                         
@@ -553,7 +553,7 @@ void ParticleFilter::updateParticleSensorData(LaserScan& scan)
                
                it->weight *= getLaserProbability(scan.ranges[mLaserScanRangeIndex[i]], particleLaserRangem);
                
-               ROS_INFO("ParticleFilter::%s occupied particleLaserRangem %f it->weight %f\n", __func__, particleLaserRangem, it->weight);
+//               ROS_INFO("ParticleFilter::%s occupied particleLaserRangem %f it->weight %f\n", __func__, particleLaserRangem, it->weight);
             }
          }
          
