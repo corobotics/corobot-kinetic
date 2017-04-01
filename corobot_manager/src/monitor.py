@@ -135,10 +135,15 @@ class CorobotMonitor():
             out, err = p.communicate()
             print out.split('\n')[0].split(', ')[1]
 
+    # Particle Filter Debugger
     def particles_callback(self, particles_message):
         self.win.setParticles(particles_message)
         self.win.after(0,self.win.drawParticles)
-
+    
+    def particle_filter_pose_callback(self, particleFilterPose_msg):
+        self.win.setParticleFilterPose(particleFilterPose_msg)
+        self.win.after(0,self.win.drawParticleFilterPose)
+        
     def init_ros_node(self):
         """Initialize all ROS node/sub/pub/srv stuff."""
         rospy.init_node("corobot_monitor")
@@ -146,6 +151,7 @@ class CorobotMonitor():
         rospy.Subscriber("pose", Pose, self.pose_callback)
         rospy.Subscriber("laser_pose", Pose, self.laserpose_callback)
         rospy.Subscriber("particleList", PoseArray, self.particles_callback)
+        rospy.Subscriber("particleFilterPose", Pose, self.particle_filter_pose_callback)
         rospy.Subscriber("ch_rawnav", Goal, self.rawnav_callback)
         rospy.Subscriber("ch_velcmd", Goal, self.velcmd_callback)
         rospy.Subscriber("ch_obstacle", Goal, self.obstacle_callback)

@@ -20,10 +20,13 @@ using corobot_common::PoseArray;
 using sensor_msgs::LaserScan;
 
 ros::Publisher particlePublisher;
+ros::Publisher pfPosePublisher;
+
 ParticleFilter* particleFilter = NULL;
 
 void odomCallback(Odometry odom);
 void goalCallback(Point goal);
+void qrcodePoseCallback(Pose qrCodePose);
 void scanCallback(LaserScan scan);
 
 typedef enum {
@@ -94,12 +97,15 @@ int main(int argc, char **argv)
    */
 
    ros::Subscriber odomSub = n.subscribe("todom", 10, odomCallback);
-//   ros::Subscriber odomSub = n.subscribe("odom", 10, odomCallback);
    ros::Subscriber goalSub = n.subscribe("goals_nav", 1, goalCallback);
-//   ros::Subscriber scanSub = n.subscribe("scan", 10, scanCallback);
+//   ros::Subscriber goalSub = n.subscribe("qrcode_pose", 1, qrcodePoseCallback);
    ros::Subscriber scanSub = n.subscribe("tscan", 10, scanCallback);
+
+    // This is for debugging the particles 
+   particlePublisher = n.advertise<corobot_common::PoseArray>("particleList", 1);
    
-   particlePublisher = n.advertise<corobot_common::PoseArray>("particleList", 1);;
+   // Publishes the Particle filters
+   pfPosePublisher = n.advertise<corobot_common::Pose>("particleFilterPose", 1);
 
    
    ros::service::waitForService("get_map");
@@ -299,6 +305,7 @@ void odomCallback(Odometry odom)
             
 
 //      ++debugIndex;
+/*
       // Send the positions of the particles to the UI every 0.5 seconds.
       if(odomCounter % 15)
       {
@@ -306,15 +313,25 @@ void odomCallback(Odometry odom)
          
          for (ParticleFilter::ParticleList::iterator it=results.begin(); it != results.end(); ++it)
          {
-//            ROS_INFO("PFLocalizationNode::%s it->pose x = %f, y = %f\n", __func__, it->pose.x, it->pose.y);
+            ROS_INFO("PFLocalizationNode::%s it->pose x = %f, y = %f\n", __func__, it->pose.x, it->pose.y);
             particles.poses.push_back((it->pose));
          }
          
 //          ROS_INFO("PFLocalizationNode::%s particles = %lu\n", __func__, particles.poses.size());
          
          particlePublisher.publish(particles);
-         
       }
+*/
+
+      ROS_INFO("PFLocalizationNode::%s PROCESSINGODOM  \n", __func__); 
+      Pose location;
+      
+      // calculate the position of the robot and sent it to the UI.
+      location = particleFilter->calculatePosition();
+      
+      pfPosePublisher.publish(location);
+
+      ROS_INFO("PFLocalizationNode::%s PROCESSINGODOM location.x = %f, location.y = %f \n", __func__, location.x, location.y); 
       
       // process the corresponding scan for the particles.
       particleFilterState = PROCESSSCAN;
@@ -351,4 +368,9 @@ void scanCallback(LaserScan scan)
    }
    
    ++scanCounter;
+}
+
+void qrcodePoseCallback(Pose qrCodePose)
+{
+   
 }

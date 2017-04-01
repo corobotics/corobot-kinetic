@@ -22,7 +22,7 @@ typedef struct {
    Pose pose;
    uint32_t poseXpixels;  // Map position in pixels
    uint32_t poseYpixels;  // Map position in pixels
-   float weight;
+   double weight;
 } Particle;
 
 
@@ -47,8 +47,9 @@ class ParticleFilter
       
       void updateParticleSensorData(LaserScan& scan);
       
-      // Test code
-//      bool bresenheim(int x1pixel, int y1pixel, int& x2pixel, int& y2pixel);
+      Pose calculatePosition();
+      
+      void setqrCodePose(Pose currentQRCodePose);
       
    private:
    
@@ -73,7 +74,7 @@ class ParticleFilter
       // Get laser probability.
       // this is based upon the code corobot-kinetic\corobot_localization\src\kinect_loc.py
       // Handles the error ranges for the laser.
-      float getLaserProbability(float observedm, float expectedm);
+      double getLaserProbability(float observedm, float expectedm);
       
       // this is a utility function that will convert from cartesian to the grid
       // coordinate system.  

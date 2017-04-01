@@ -42,15 +42,16 @@ class CorobotMonitorUI(Tk):
         self.label = Label(self.frame, text="Current Pose", font=("Helvetica", 18))
         self.label.grid(column = 0, row = 0, columnspan = 3)
         
-	self.canvas = Canvas(self.imgframe, width = self.map.width(), height = self.map.height())
-	self.canvas.create_image(self.map.width()/2,self.map.height()/2, image = self.map)
-	self.canvas.grid(sticky = 'NE')
+        self.canvas = Canvas(self.imgframe, width = self.map.width(), height = self.map.height())
+        self.canvas.create_image(self.map.width()/2,self.map.height()/2, image = self.map)
+        self.canvas.grid(sticky = 'NE')
 
+        # Particle Filter GUI stuff
+        self.particleMarkers = []
+#        self.currentPfPose;
+   
         self.marker = self.canvas.create_oval(-5,5,5,-5,fill = 'red')
         self.goal = self.canvas.create_oval(-5,5,5,-5, fill = 'green')
-        
-        #self.particleMarker = self.canvas.create_oval(-5,5,5,-5,fill = 'cyan')
-        self.particleMarkers = []
         
         self.lazcanvas = Canvas(self.lazframe, width = 400, height = 700, bg = 'white')
         self.lazcanvas.grid(sticky = 'NE')
@@ -260,15 +261,26 @@ class CorobotMonitorUI(Tk):
         # Remove the old particles from the display
         self.canvas.delete('hparticles')
         
-        #rospy.loginfo("Ui::drawParticles x = %f y = %f\n", x, y)
-        
         # draw the new particles if we have any.
         if len(self.particles.poses) > 0:
             for currentPose in self.particles.poses:
                 x = currentPose.x
                 y = currentPose.y
+#                rospy.loginfo("Ui::drawParticles x = %f y = %f\n", x, y)
                 particleMarker = self.canvas.create_oval((x/.1312)-69, self.map.height()-(y/.1312) + 1, (x/.1312) - 67, self.map.height()-(y/.1312)-1, fill = 'cyan', tags = 'hparticles')
                     
+    def setParticleFilterPose(self, particleFilterPose):
+        self.currentPfPose = particleFilterPose
+        
+    def drawParticleFilterPose(self):
+        self.canvas.delete('pfPose')
+
+        x = self.currentPfPose.x
+        y = self.currentPfPose.y
+
+#        rospy.loginfo("Ui::drawParticleFilterPose x = %f y = %f\n", x, y)
+        particleMarker = self.canvas.create_oval((x/.1312)-73, self.map.height()-(y/.1312) + 5, (x/.1312) - 63, self.map.height()-(y/.1312)-5, fill = 'magenta', tags = 'pfPose')
+        
     def setWalls(self,wallDat):
         self.wallDat = wallDat
         

@@ -704,21 +704,21 @@ bool ParticleFilter::bresenheimCondition(int xpixel, int ypixel)
    return occupied;
 }
 
-float ParticleFilter::getLaserProbability(float observedm, float expectedm)
+double ParticleFilter::getLaserProbability(float observedm, float expectedm)
 {
    
    // probability on y axis
-   float p1 = 0.4; // obstacle closer than expected
-   float p2 = 0.6; // obstacle is about where you expect it.
-   float p3 = 0.2; // obstacle farther than expected
+   double p1 = 0.4; // obstacle closer than expected
+   double p2 = 0.6; // obstacle is about where you expect it.
+   double p3 = 0.2; // obstacle farther than expected
 
    // differences on x axis
-   float d1 = 0.8;
-   float d2 = 0.95;
-   float d3 = 1.05;
-   float d4 = 1.2;
+   double d1 = 0.8;
+   double d2 = 0.95;
+   double d3 = 1.05;
+   double d4 = 1.2;
     
-   float probability = p2;
+   double probability = p2;
     
 //   ROS_INFO("ParticleFilter::%s  observedm %f expectedm %f", __func__, observedm, expectedm);
    
@@ -730,7 +730,7 @@ float ParticleFilter::getLaserProbability(float observedm, float expectedm)
       // calculate a probability based on the midpoint of 0.45 to 10.0
       if (expectedm >= laserRangeMinm && expectedm <= laserRangeMaxm)
       {
-         float ratio = laserRangeMidpointm / expectedm;
+         double ratio = laserRangeMidpointm / expectedm;
          
 //         ROS_INFO("ParticleFilter::%s  ratio %f", __func__, ratio);
          
@@ -762,7 +762,7 @@ float ParticleFilter::getLaserProbability(float observedm, float expectedm)
       // both the laser and the particle are outside of the valid ranges by returning 1.0
       if(observedm >= laserRangeMinm  || observedm <= laserRangeMaxm)
       {
-         float ratio = observedm / expectedm;
+         double ratio = observedm / expectedm;
          
 //         ROS_INFO("ParticleFilter::%s  ratio %f", __func__, ratio);
          
@@ -793,17 +793,55 @@ float ParticleFilter::getLaserProbability(float observedm, float expectedm)
 
 void ParticleFilter::cartesianToGrid(double xm, double ym, uint32_t& xpixel, uint32_t& ypixel)
  {
-    // The origin of the grid map matches cartesian coordinates. This does not match the map in any 
-    // other part of the system.
-    xpixel = xm / mMap.info.resolution;
-    ypixel = ym / mMap.info.resolution;
+   // The origin of the grid map matches cartesian coordinates. This does not match the map in any 
+   // other part of the system.
+   xpixel = xm / mMap.info.resolution;
+   ypixel = ym / mMap.info.resolution;
  }
  
 void ParticleFilter::gridToCartesian(uint32_t xpixel, uint32_t ypixel, double& xm, double& ym)
 {
-    // The origin of the grid map matches cartesian coordinates. This does not match the map in any 
-    // other part of the system.
-    xm = xpixel * mMap.info.resolution;
-    ym = ypixel * mMap.info.resolution;
+   // The origin of the grid map matches cartesian coordinates. This does not match the map in any 
+   // other part of the system.
+   xm = xpixel * mMap.info.resolution;
+   ym = ypixel * mMap.info.resolution;
 }
+
+
+// http://www.geomidpoint.com/calculation.html
+// Compute weighted average x, y and z coordinates.
+// x = ((x1 * w1) + (x2 * w2) + ... + (xn * wn)) / totweight
+// y = ((y1 * w1) + (y2 * w2) + ... + (yn * wn)) / totweight
+// z = ((z1 * w1) + (z2 * w2) + ... + (zn * wn)) / totweight
+
+Pose ParticleFilter::calculatePosition()
+{
+   double xm = 0;
+   double ym = 0;
+    
+   Pose location;
    
+   location.x = 0;
+   location.y = 0;
+   double totalWeight = 0;
+
+   if ( mParticles.empty() == false)
+   {
+
+      ParticleFilter::ParticleList::iterator it = mParticles.begin();
+       
+      while (it != mParticles.end())
+      {
+         xm += it->pose.x * it->weight;
+         ym += it->pose.y * it->weight;
+         totalWeight += it->weight;
+         
+        ++it;
+      }
+           
+      location.x = xm / totalWeight;
+      location.y = ym / totalWeight;
+   }
+    
+   return location;
+}

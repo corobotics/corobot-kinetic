@@ -109,6 +109,7 @@ class CorobotManager():
     def pose_callback(self, pose):
         """Callback for the pose ROS topic."""
         self.pose = pose
+        
     def goals_callback(self, goal):
         if self.goal_queue and not point_equals(goal, self.goal_queue[-1][1]):
             self.goal_queue = deque()
