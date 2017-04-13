@@ -141,7 +141,7 @@ class CorobotMonitor():
         self.win.after(0,self.win.drawParticles)
     
     def particle_filter_pose_callback(self, particleFilterPose_msg):
-        self.win.setParticleFilterPose(particleFilterPose_msg)
+        self.win.setParticleFilterPose(particleFilterPose_msg.x, particleFilterPose_msg.y)
         self.win.after(0,self.win.drawParticleFilterPose)
         
     def init_ros_node(self):

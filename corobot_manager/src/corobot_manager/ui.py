@@ -48,7 +48,7 @@ class CorobotMonitorUI(Tk):
 
         # Particle Filter GUI stuff
         self.particleMarkers = []
-#        self.currentPfPose;
+        self.currentPfPose = [0,0]
    
         self.marker = self.canvas.create_oval(-5,5,5,-5,fill = 'red')
         self.goal = self.canvas.create_oval(-5,5,5,-5, fill = 'green')
@@ -269,14 +269,14 @@ class CorobotMonitorUI(Tk):
 #                rospy.loginfo("Ui::drawParticles x = %f y = %f\n", x, y)
                 particleMarker = self.canvas.create_oval((x/.1312)-69, self.map.height()-(y/.1312) + 1, (x/.1312) - 67, self.map.height()-(y/.1312)-1, fill = 'cyan', tags = 'hparticles')
                     
-    def setParticleFilterPose(self, particleFilterPose):
-        self.currentPfPose = particleFilterPose
+    def setParticleFilterPose(self,  x, y):
+        self.currentPfPose = [x, y]
         
     def drawParticleFilterPose(self):
         self.canvas.delete('pfPose')
 
-        x = self.currentPfPose.x
-        y = self.currentPfPose.y
+        x = self.currentPfPose[0]
+        y = self.currentPfPose[1]
 
 #        rospy.loginfo("Ui::drawParticleFilterPose x = %f y = %f\n", x, y)
         particleMarker = self.canvas.create_oval((x/.1312)-73, self.map.height()-(y/.1312) + 5, (x/.1312) - 63, self.map.height()-(y/.1312)-5, fill = 'magenta', tags = 'pfPose')
