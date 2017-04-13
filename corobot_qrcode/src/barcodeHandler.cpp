@@ -201,8 +201,10 @@ void BarcodeHandler::image_callback(Image &image) {
 //            (barcodeOrientation.compare("W") == 0))
 
 
-
-
+  
+        // Add a time stamp to the message
+        msg.header.stamp = ros::Time::now();
+        
         publisher.publish(msg);
         checkIfNewQR(msg); // do the publisher.publish(msg); inside chechIfNewQR once it Qrcode counting works perfect
 	ROS_INFO_STREAM("FFFFFFFFFFFFFFFFFFFFFFFF");
