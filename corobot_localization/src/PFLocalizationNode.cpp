@@ -104,18 +104,19 @@ int main(int argc, char **argv)
 
 
    ros::Subscriber goalSub = n.subscribe("goals_nav", 1, goalCallback);
-   ros::Subscriber qrcodeSub = n.subscribe("qrcode_pose", 1, qrcodePoseCallback);
+   
    
    // tscan and todom are throttled scan and odom messages.
    ros::Subscriber odomSub = n.subscribe("todom", 10, odomCallback);
    ros::Subscriber scanSub = n.subscribe("tscan", 10, scanCallback);
+   ros::Subscriber qrcodeSub = n.subscribe("tqrcode_pose", 1, qrcodePoseCallback);
 
    
    // Publishes the Particle filters estimated location.
    pfPosePublisher = n.advertise<corobot_common::Pose>("particleFilterPose", 1);
 
    // Debug Publishes the Particle filters particles.
-   //pfPosePublisher = n.advertise<corobot_common::Pose>("particleFilterPose", 1);
+   particlePublisher = n.advertise<corobot_common::PoseArray>("particleList", 1);
    
    // Get the map for the particle filter.
    ros::service::waitForService("get_map");
@@ -181,7 +182,8 @@ void odomCallback(Odometry odom)
    double y_m = odom.pose.pose.position.y;
    double z_m = 0;
   
-   ROS_INFO("PFLocalizationNode::%s odomCounter = %u\n", __func__, odomCounter);
+//   ROS_INFO("PFLocalizationNode::%s odomCounter = %u\n", __func__, odomCounter);
+ 
    
    if (particleFilterState == PROCESSODOM)
    {
@@ -200,35 +202,24 @@ void odomCallback(Odometry odom)
       location = particleFilter->calculatePosition();
       
       pfPosePublisher.publish(location);
-/*
+      
       // Debug code sends the particles to the corobot map
       ParticleFilter::ParticleList& results = particleFilter->getParticleList();
       
       for (ParticleFilter::ParticleList::iterator it=results.begin(); it != results.end(); ++it)
       {
-         ROS_INFO("PFLocalizationNode::%s it->pose x = %f, y = %f\n", __func__, it->pose.x, it->pose.y);
+//         ROS_INFO("PFLocalizationNode::%s it->pose x = %f, y = %f\n", __func__, it->pose.x, it->pose.y);
          particles.poses.push_back((it->pose));
       }
       
-//          ROS_INFO("PFLocalizationNode::%s particles = %lu\n", __func__, particles.poses.size());
+       ROS_INFO("PFLocalizationNode::%s particles = %lu\n", __func__, particles.poses.size());
       
       particlePublisher.publish(particles);
-
-*/
-
-      
-      // Process QR codes;
-      if(qRcodePoseRecieved == true)
-      {
-         
-      }
-      
       
       // Make sure we process the corresponding scan
       particleFilterState = PROCESSSCAN;
 
       PFLocMutex.unlock(); 
-      
    }
    
      // debug.
@@ -248,8 +239,7 @@ void odomCallback(Odometry odom)
 void scanCallback(LaserScan scan)
 {
    
-   ROS_INFO("PFLocalizationNode::%s scanCounter = %u\n", __func__, scanCounter);
-
+//   ROS_INFO("PFLocalizationNode::%s scanCounter = %u\n", __func__, scanCounter);
     
    if (particleFilterState == PROCESSSCAN)
    {
@@ -259,6 +249,18 @@ void scanCallback(LaserScan scan)
          
       ROS_INFO("PFLocalizationNode::%s PROCESSINGSCAN \n", __func__); 
 
+      // this seems like a strange place to put this but we're doing a bunch of
+      // particle weight calcs in updateParticleSensorData so this is the best time
+      // to remove any particles outside the area before we do those calculations.
+      
+      // Process QR codes;
+      if(qRcodePoseRecieved == true)
+      {
+         particleFilter->QrCodePosePruneParticles();
+         
+         qRcodePoseRecieved = false;
+      }
+      
       particleFilter->updateParticleSensorData(scan);
    
       // go back to processing the odom.
@@ -275,11 +277,18 @@ void qrcodePoseCallback(Pose qrCodePose)
 {
    Pose lastQrCodePose = particleFilter->getQrCodePose();
    
+   ROS_INFO("PFLocalizationNode::%s Called sec %f\n", __func__, qrCodePose.header.stamp.toSec()); 
+//   ROS_INFO("PFLocalizationNode::%s Called difference sec %f\n", __func__, (qrCodePose.header.stamp.toSec() - lastQrCodePose.header.stamp.toSec())); 
+   
    // Setting this to 60 seconds;
-   if((qrCodePose.header.stamp.toSec() - lastQrCodePose.header.stamp.toSec()) < 60)
+   if((qrCodePose.header.stamp.toSec() - lastQrCodePose.header.stamp.toSec()) >= 30)
    {
+      PFLocMutex.lock();
+      
       particleFilter->setQrCodePose(qrCodePose);
       qRcodePoseRecieved = true;
+      
+      PFLocMutex.unlock();
    }
 }
 

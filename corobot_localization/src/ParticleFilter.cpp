@@ -775,6 +775,8 @@ Pose ParticleFilter::calculatePosition()
 
 void ParticleFilter::setQrCodePose(Pose qRCodePose)
 {
+   ROS_INFO("ParticleFilter::%s qRCodePose x = %f y = %f\n", __func__, qRCodePose.x, qRCodePose.y);  
+   
    mCurrentQrCodePose = qRCodePose;
 }
 
