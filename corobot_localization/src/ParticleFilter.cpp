@@ -51,6 +51,13 @@ mInitialized(false)
       
       for(uint32_t x = 0; x < mMap.info.width; ++x)
       {
+         // Hack to get rid of the first floor atrium showing on the map.
+         if((x > 2910 && x < 3190) && (y > 341 && y < 1100))
+         {
+            ++numUndefinedSpaces;
+            continue;
+         }
+         
          index = x + y * mMap.info.width;
          
          // we're going for each space being 100% open so we can ensure that
@@ -75,7 +82,7 @@ mInitialized(false)
    }
    
    mRoombaRadiusPixels = (roombaRadiusm / mMap.info.resolution);
-/*   
+/*
    // DEBUG!!!! YEAH BABE!!! - Austin Powers
    ROS_INFO("ParticleFilter::ParticleFilter mNumOpenSpaces %d\n", mNumOpenSpaces);
    ROS_INFO("ParticleFilter::ParticleFilter numSemiClosed %d\n", numSemiClosed);
@@ -133,6 +140,13 @@ bool ParticleFilter::initialize(int numParticles)
    {
       for(uint32_t x = 0; x < mMap.info.width; ++x)
       {
+         // Hack to get rid of the first floor atrium showing on the map.
+         if((x > 2910 && x < 3190) && (y > 341 && y < 1100))
+         {
+            // these spaces are undefined.
+            continue;
+         }
+         
          index = x + y * mMap.info.width;
          
          // Make sure that the space is 100% open.
@@ -784,7 +798,7 @@ void ParticleFilter::setQrCodePose(Pose qRCodePose)
 // Prunes the particles in a radius around mCurrentQrCodePose
 void ParticleFilter::QrCodePosePruneParticles()
 {
-   float radiusm = 5;
+   float radiusm = 15;
    float tempRadiusm = 0;
    
    ParticleFilter::ParticleList::iterator it = mParticles.begin();
