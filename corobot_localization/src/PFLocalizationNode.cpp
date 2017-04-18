@@ -61,6 +61,8 @@ extern int8_t testMap[40][40];
 std::mutex PFLocMutex;
 
 static bool qRcodePoseRecieved = false;
+static bool reinitializeParticleFilter = false;
+static int numberofParticles = 1000;
    
 int main(int argc, char **argv)
 {
@@ -109,7 +111,7 @@ int main(int argc, char **argv)
    // tscan and todom are throttled scan and odom messages.
    ros::Subscriber odomSub = n.subscribe("todom", 10, odomCallback);
    ros::Subscriber scanSub = n.subscribe("tscan", 10, scanCallback);
-   ros::Subscriber qrcodeSub = n.subscribe("tqrcode_pose", 1, qrcodePoseCallback);
+   ros::Subscriber qrcodeSub = n.subscribe("tqrcode_pose", 5, qrcodePoseCallback);
 
    
    // Publishes the Particle filters estimated location.
@@ -125,7 +127,7 @@ int main(int argc, char **argv)
    if (ros::service::call("get_map", coMap))
    {
 
-      particleFilter = new ParticleFilter(coMap.response.map, 0.6, 114, 10);
+      particleFilter = new ParticleFilter(coMap.response.map, 0.7, 120, 10);
       
       // we're up and running so transition to IDLE.
       particleFilterState = IDLE;
@@ -151,7 +153,7 @@ void goalCallback(Point goal)
       
       PFLocMutex.lock();
 
-      particleFilter->initialize(1000);
+      particleFilter->initialize(numberofParticles);
       
       PFLocMutex.unlock();      
             
@@ -194,7 +196,14 @@ void odomCallback(Odometry odom)
       ROS_INFO("PFLocalizationNode::%s PROCESSINGODOM x = %f, y = %f\n", __func__, x_m, y_m); 
       
       PoseArray particles; 
-
+      
+      // Hack for significant change in the QR codes.
+      if(reinitializeParticleFilter == true)
+      {
+         particleFilter->initialize(numberofParticles);
+         reinitializeParticleFilter = false;
+      }
+      
       particleFilter->updateParticlePositions(odom);
  
       // calculate the position of the robot and sent it to the UI.
@@ -202,7 +211,7 @@ void odomCallback(Odometry odom)
       location = particleFilter->calculatePosition();
       
       pfPosePublisher.publish(location);
-      
+/*      
       // Debug code sends the particles to the corobot map
       ParticleFilter::ParticleList& results = particleFilter->getParticleList();
       
@@ -215,7 +224,7 @@ void odomCallback(Odometry odom)
        ROS_INFO("PFLocalizationNode::%s particles = %lu\n", __func__, particles.poses.size());
       
       particlePublisher.publish(particles);
-      
+*/
       // Make sure we process the corresponding scan
       particleFilterState = PROCESSSCAN;
 
@@ -254,8 +263,9 @@ void scanCallback(LaserScan scan)
       // to remove any particles outside the area before we do those calculations.
       
       // Process QR codes;
-      if(qRcodePoseRecieved == true)
+      if(qRcodePoseRecieved == true && reinitializeParticleFilter == false)
       {
+         ROS_INFO("PFLocalizationNode::%s prune particles \n", __func__); 
          particleFilter->QrCodePosePruneParticles();
          
          qRcodePoseRecieved = false;
@@ -277,13 +287,15 @@ void qrcodePoseCallback(Pose qrCodePose)
 {
    Pose lastQrCodePose = particleFilter->getQrCodePose();
    
-   ROS_INFO("PFLocalizationNode::%s Called sec %f\n", __func__, qrCodePose.header.stamp.toSec()); 
+//   ROS_INFO("PFLocalizationNode::%s Called sec %f\n", __func__, qrCodePose.header.stamp.toSec()); 
 //   ROS_INFO("PFLocalizationNode::%s Called difference sec %f\n", __func__, (qrCodePose.header.stamp.toSec() - lastQrCodePose.header.stamp.toSec())); 
    
    // Setting this to 60 seconds;
-   if((qrCodePose.header.stamp.toSec() - lastQrCodePose.header.stamp.toSec()) >= 30)
+   if((qrCodePose.header.stamp.toSec() - lastQrCodePose.header.stamp.toSec()) >= 5)
    {
       PFLocMutex.lock();
+      
+      reinitializeParticleFilter = true;
       
       particleFilter->setQrCodePose(qrCodePose);
       qRcodePoseRecieved = true;
