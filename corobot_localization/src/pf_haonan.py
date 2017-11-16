@@ -9,7 +9,7 @@ from corobot_common.msg import Pose
 from nav_msgs.msg import Odometry
 from sensor_msgs.msg import LaserScan
 from ekf import EKF
-from corobot_qrcode_python import CSVReader
+from corobot_qrcode import CSVReader
 from corobot_common.srv import GetCoMap
 
 
@@ -72,13 +72,13 @@ def update_model(scan):
 
 def main():
     global pose_pub, ekf, particles, map
+    rospy.init_node("localization")
     rospy.wait_for_service('get_map')
     map_srv = rospy.ServiceProxy('get_map', GetCoMap)
     map = map_srv().map
     pose = Pose()
     roslib.load_manifest("corobot_localization")
     map_reader = CSVReader
-    rospy.init_node("localization")
     ekf = EKF()
     pose_pub = rospy.Publisher("pose", Pose)
     # rospy.Subscriber("odom", Odometry, odom_callback)
