@@ -21,7 +21,6 @@ def pf_initialize(pose):
     covariance = tuple(pose.cov.flat)
 
     particle_count = 0
-    particles = []
     # Initialize 500 objects of particle
     while particle_count < 500:
         particles[particle_count] = Particle(x_real, y_real, orientation, 0,
@@ -81,6 +80,7 @@ def main():
     # map_reader = CSVReader
     ekf = EKF()
     pose_pub = rospy.Publisher("pose", Pose)
+    particles = []
     # rospy.Subscriber("odom", Odometry, odom_callback)
     # rospy.Subscriber("qrcode_pose", Pose, qrcode_callback)
     rospy.Subscriber("qrcode_pose", Pose, pf_initialize)
