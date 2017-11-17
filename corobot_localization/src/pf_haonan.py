@@ -66,7 +66,10 @@ def update_model(scan):
     prtcle_idx = 0
     while len(particles) < 500:
         particles.append(sorted_particles[prtcle_idx])
-        prtcle_idx += 1
+        if prtcle_idx < len(sorted_particles) - 1:
+            prtcle_idx += 1
+        else:
+            prtcle_idx += 0
 
 
 def main():
