@@ -9,7 +9,7 @@ from corobot_common.msg import Pose
 from nav_msgs.msg import Odometry
 from sensor_msgs.msg import LaserScan
 from ekf import EKF
-from corobot_qrcode import CSVReader
+# from corobot_qrcode import CSVReader
 from corobot_common.srv import GetCoMap
 
 
@@ -78,7 +78,7 @@ def main():
     map = map_srv().map
     pose = Pose()
     roslib.load_manifest("corobot_localization")
-    map_reader = CSVReader
+    # map_reader = CSVReader
     ekf = EKF()
     pose_pub = rospy.Publisher("pose", Pose)
     # rospy.Subscriber("odom", Odometry, odom_callback)
