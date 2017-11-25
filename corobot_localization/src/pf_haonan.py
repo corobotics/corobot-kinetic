@@ -30,7 +30,7 @@ def pf_initialize(qrcode_pose):
     particle_count = 0
     # Initialize 500 objects of particle
     while particle_count < num_particles:
-        particles[particle_count] = Particle(x_real, y_real, orientation, mean,
+        particles[particle_count] = particle.Particle(x_real, y_real, orientation, mean,
                                              covariance[0], covariance[4], covariance[8], map, init_probability)
         particle_count += 1
 
