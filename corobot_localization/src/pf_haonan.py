@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 import roslib
 import math
+import random
 
 import rospy
 import particle
@@ -85,14 +86,23 @@ def update_model(scan):
                 particle_count += 1
 
     # TODO: Need to confirm with Dr. Butler with specific approach.
-    sorted_particles = sorted(particles, key=lambda particle: particle.probability, reverse=True)
-    prtcle_idx = 0
-    while len(particles) < 500:
-        particles.append(sorted_particles[prtcle_idx])
-        if prtcle_idx < len(sorted_particles) - 1:
-            prtcle_idx += 1
-        else:
-            prtcle_idx += 0
+    # Version 1:
+    # sorted_particles = sorted(particles, key=lambda particle: particle.probability, reverse=True)
+    # prtcle_idx = 0
+    # while len(particles) < 500:
+    #     particles.append(sorted_particles[prtcle_idx])
+    #     if prtcle_idx < len(sorted_particles) - 1:
+    #         prtcle_idx += 1
+    #     else:
+    #         prtcle_idx += 0
+    # Version 2:
+    sorted_particles = sorted(particles, key= lambda particle: particle.probability, reverse= True)
+    copy_idx = 0
+    gap = num_particles - len(particles)
+    while copy_idx < gap:
+        copied_particle = sorted_particles[random.randint(0, gap)]
+        particles.append(copied_particle)
+        copy_idx += 1
 
 
 def main():
