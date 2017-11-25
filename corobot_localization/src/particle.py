@@ -5,124 +5,170 @@ from kinect_loc import bres_condition
 
 
 class Particle:
-    slots = ("x_pos", "y_pos", "orientation", "probability")
+    slots = ("x_pos", "y_pos", "orientation", "probability", "map")
 
-    def __init__(self, x_exact, y_exact, orient_exact, mu, x_sigma, y_sigma, orientation_sigma):
-        self.x_pos = x_exact + round(random.gauss(mu, x_sigma), 4) * random.randint(-1, 1)
-        self.y_pos = y_exact + round(random.gauss(mu, y_sigma), 4) * random.randint(-1, 1)
+    def __init__(self, x_exact, y_exact, orient_exact, mu, x_sigma, y_sigma, orientation_sigma, map, init_probability):
+        """
+        Initialize a particle instance with pose information.
+        :param x_exact: X coordinate in unit of meter.
+        :param y_exact: Y coordinate in unit of meter.
+        :param orient_exact: Orientation of robot.
+        :param mu: Mean value used in Gaussian distribution.
+        :param x_sigma: Variance on X-direction.
+        :param y_sigma: Variance on Y-direction.
+        :param orientation_sigma: Variance on orientation.
+        :param map: Map information.
+        """
+        # Add noises to (x, y) coordinates.
+        x_pos = x_exact + round(random.gauss(mu, x_sigma), 4) * random.randint(-1, 1)
+        y_pos = y_exact + round(random.gauss(mu, y_sigma), 4) * random.randint(-1, 1)
+        self.map = map
+        # Transfer the (x, y) coordinates with units of meters to units of pixels.
+        self.x_pos = math.floor(x_pos / self.map.info.resolution)
+        self.y_pos = math.floor(y_pos / self.map.info.resolution)
         self.orientation = orient_exact + round(random.gauss(mu, orientation_sigma), 4)
-        self.probability = 1 / 500
+        # All particles shares same probability.
+        self.probability = init_probability
 
     def predict_update(self, trv_dist, new_orient, mu, dist_sigma, orient_sigma):
+        """
+        Predict the particle's new location with given parameters.
+        :param trv_dist: Traveled distance in meters.
+        :param new_orient: New orientation of robot.
+        :param mu: Mean value used for Gaussian distribution.
+        :param dist_sigma: Variance of distance used for Gaussian distribution.
+        :param orient_sigma: Variance of orientation used for Gaussian distribution.
+        :return: None
+        """
+        # Add Gausssian distributed noises to traveled distance and orientation.
         est_trv_dist = trv_dist + round(random.gauss(mu, dist_sigma), 4) * random.randint(-1, 1)
         est_orient = new_orient + round(random.gauss(mu, orient_sigma), 4) * random.randint(-1, 1)
-        self.x_pos = math.cos(self.orientation + new_orient) * est_trv_dist + self.x_pos
-        self.y_pos = math.sin(self.orientation + new_orient) * est_trv_dist + self.y_pos
+        # Transfer the traveled distance from unit of meters to unit of pixels.
+        pixel_trv_dist = est_trv_dist / self.map.info.resolution
+        # Calculate the new location of particle.
         self.orientation = round(math.fmod(self.orientation + est_orient), (2 * math.pi))
+        self.x_pos = math.floor(math.cos(self.orientation) * pixel_trv_dist + self.x_pos)
+        self.y_pos = math.floor(math.sin(self.orientation) * pixel_trv_dist + self.y_pos)
 
-    def loc_check(self, map):
-        resolution = map.info.resolution
-        pixel_x = int(self.x_pos / resolution)
-        pixel_y = int(self.y_pos / resolution)
-        i = pixel_x + (map.info.height - pixel_y - 1) * map.info.width
-        occ = map.data[i]
+    def loc_check(self):
+        """
+        Quick check if the particle is in the wall or obstacle with given map.
+        :return: True if particle is in open area; False if particle is in the wall or a mapped obstacle.
+        """
+        i = self.x_pos + (self.map.info.height - self.y_pos - 1) * self.map.info.width
+        occ = self.map.data[i]
         if occ > 50:
             return False
         else:
             return True
 
-    def probability_update(self, map, laser_scan):
+    def probability_update(self, laser_scan):
+        """
+        Update the quality of particle based on its expected readings.
+        :param laser_scan: The real laser sensor reading info.
+        :return: None
+        """
         starting = laser_scan.angle_min
         ending = laser_scan.angle_max
         increment = laser_scan.angle_increment * 10
 
-        # Calculated the expected Laser Scan results using bresenhem algorithm
-
-        # Do calculations w.r.t the images pixels
-        res = map.resolution
-        ht = map.info.height
-
         # should convert robot pose into kinect pose (offset backward ~9 cm) first
-        x_coord = self.x_pos / res
-        y_coord = ht - (self.y_pos / res)
         starting_scan = self.orientation + starting
         ending_scan = self.orientation + ending
 
-        current_scan = starting_scan
+        self.probability = self.particle_quality(starting_scan, ending_scan, laser_scan.range_max,
+                                                 laser_scan.range_min, increment, laser_scan.ranges)
 
-        scan = []
+    def particle_quality(self, starting_scan, ending_scan, range_max, range_min, scan_increment, readings):
+        """
+        Use Bresenham's algorithm to calculate a particle's expected laser sensor readings.
+        :param starting_scan: Orientation of first scanning.
+        :param ending_scan: Orientation of last scanning.
+        :param range_max: Sensor's maximum scanning range.
+        :param range_min: Sensor's minimum scanning range.
+        :param scan_increment: Angle between consecutive scanning.
+        :param readings: Readings of real laser scanning.
+        :return: Probability of a particle, expressing the quality.
+        """
+        current_scan = starting_scan
+        # dist_expec is used to describe the expectation of the ratio of real reading to estimated reading.
+        dist_expec = 0
+        reading_counter = 0
+        particle_quality = 0
 
         # note theta is in original (right-handed) coords
         # to follow the scan order, we will increment in this coord system
         # but then negate the theta (or 2pi-theta) to do the image testing
         while current_scan <= ending_scan:
-            scan_range = laser_scan.range_max / res
-            target_x = x_coord + scan_range * math.cos(current_scan)
-            target_y = y_coord + scan_range * math.sin(current_scan)
+            scan_range = range_max / self.map.info.resolution
+            target_x = self.x_pos + scan_range * math.cos(current_scan)
+            target_y = self.y_pos + scan_range * math.sin(current_scan)
 
-            if x_coord < 0:
+            if self.x_pos < 0:
                 x_coord = 0
-            elif x_coord > map.info.width:
-                x_coord = map.info.width
+            elif self.x_pos > self.map.info.width:
+                x_coord = self.map.info.width
             else:
-                x_coord = int(x_coord)
+                x_coord = int(self.x_pos)
 
-            if y_coord < 0:
+            if self.y_pos < 0:
                 y_coord = 0
-            elif y_coord > map.info.height:
-                y_coord = map.info.height
+            elif self.y_pos > self.map.info.height:
+                y_coord = self.map.info.height
             else:
-                y_coord = int(y_coord)
+                y_coord = int(self.y_pos)
 
             if target_x < 0:
                 target_x = 0
-            elif target_x > map.info.width:
-                target_x = map.info.width
+            elif target_x > self.map.info.width:
+                target_x = self.map.info.width
             else:
                 target_x = int(target_x)
 
             if target_y < 0:
                 target_y = 0
-            elif target_y > map.info.height:
-                target_y = map.info.height
+            elif target_y > self.map.info.height:
+                target_y = self.map.info.height
             else:
                 target_y = int(target_y)
 
+            # Use Bresenhem's algorithm to calculate the scanning reading.
             distance = bresenhem(x_coord, y_coord, target_x, target_y, bres_condition)
+            pix_occupied_idx = 2
 
-            if distance[2] is True:
-                actual_dist = math.sqrt((distance[0] - x_coord) ** 2 + (distance[1] - y_coord) ** 2) * res
-                scan.append(actual_dist)
+            # If there's a block between target pixel and particle. Estimated reading is the distance
+            # between the particle and the block.
+            if distance[pix_occupied_idx] is True:
+                est_scan = math.sqrt((distance[0] - x_coord) ** 2 + (distance[1] - y_coord) ** 2) \
+                                * self.map.info.resolution
+            # Else, the sensor reading is the max of scanning range.
             else:
-                scan.append(laser_scan.range_max)
+                est_scan = range_max
 
-            current_scan += increment
-
-        # Compare expected and real data
-            dist_diff = []
-            scan_idx = 0
-            while scan_idx < len(laser_scan.ranges):
-                if laser_scan.ranges[scan_idx] < laser_scan.range_min\
-                        or laser_scan.ranges[scan_idx] > laser_scan.range_max:
-                    dist_diff.append(1)
-                else:
-                    dist_diff.append(laser_scan.ranges[scan_idx] / scan[scan_idx])
-                scan_idx += 10
-
-            dist_idx = 0
-            dist_exp = 0
-            while dist_idx < len(dist_diff):
-                dist_exp += dist_diff[dist_idx]
-                dist_idx += 1
-            dist_exp = dist_exp / len(dist_diff)
-
-            if dist_exp <= 0.8:
-                self.probability = 0.4
-            elif dist_exp < 0.95:
-                self.probability = (4/3) * dist_exp - (2 /3)
-            elif dist_exp <= 1.05:
-                self.probability = 0.6
-            elif dist_exp <= 1.2:
-                self.probability = (-8 / 3) * dist_exp + 3.4
+            current_real_reading = readings[current_scan]
+            # If the real reading is out of effective range, set real/estimated ratio to 1.
+            if current_real_reading < range_min or current_real_reading > range_max:
+                dist_expec += 1
+            # Else, calculate the ratio.
             else:
-                self.probability = 0.2
+                dist_expec += current_real_reading / est_scan
+            reading_counter += 1
+
+            current_scan += scan_increment
+
+        # After computing all estimated readings. Divide the summation of expected ratio by the number
+        # of used readings.
+        dist_expec /= reading_counter
+
+        if dist_expec <= 0.8:
+            particle_quality = 0.4
+        elif dist_expec <= 0.95:
+            particle_quality = (4/3) * dist_expec - (2 / 3)
+        elif dist_expec <= 1.05:
+            particle_quality = 0.6
+        elif dist_expec <= 1.2:
+            particle_quality = (-8 / 3) * dist_expec + 3.4
+        else:
+            particle_quality = 0.2
+
+        return particle_quality
