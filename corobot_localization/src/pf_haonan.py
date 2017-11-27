@@ -99,7 +99,7 @@ def update_model(scan):
     sorted_particles = sorted(particles, key= lambda particle: particle.probability, reverse= True)
     copy_idx = 0
     gap = num_particles - len(particles)
-    print(gap, len(sorted_particles), len(particles))
+    # print(gap, len(sorted_particles), len(particles))
     while copy_idx < gap:
         copied_particle = sorted_particles[random.randint(0, gap)]
         particles.append(copied_particle)
@@ -118,6 +118,7 @@ def main():
     num_particles = 500
     particles = []
     rospy.Subscriber("qrcode_pose", Pose, pf_initialize)
+    print("particles size after initialization: ", len(particles))
     rospy.Subscriber("odom", Odometry, prediction)
     rospy.Subscriber("scan", LaserScan, update_model)
     rospy.spin()
