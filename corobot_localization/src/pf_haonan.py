@@ -114,10 +114,12 @@ def main():
     map = map_srv().map
     roslib.load_manifest("corobot_localization")
     ekf = EKF()
+    pose = Pose()
     pose_pub = rospy.Publisher("pose", Pose)
     num_particles = 500
     particles = []
-    rospy.Subscriber("qrcode_pose", Pose, pf_initialize)
+    pf_initialize(pose)
+    # rospy.Subscriber("qrcode_pose", Pose, pf_initialize)
     print("particles size after initialization: ", len(particles))
     rospy.Subscriber("odom", Odometry, prediction)
     rospy.Subscriber("scan", LaserScan, update_model)
