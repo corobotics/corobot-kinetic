@@ -26,19 +26,15 @@ def pf_initialize(qrcode_pose):
     orientation = qrcode_pose.theta
     mean = 0
     covariance = tuple(qrcode_pose.cov)
-    print(len(covariance))
-    idx = 0
-    while idx < len(covariance):
-        print(covariance[idx])
-        idx += 1
     init_probability = 1 / num_particles
 
     particle_count = 0
     # Initialize 500 objects of particle
+
     while particle_count < num_particles:
-        particles[particle_count] = particle.Particle(x_real, y_real, orientation, mean,
+        particles.append(particle.Particle(x_real, y_real, orientation, mean,
                                                       covariance[0], covariance[4], covariance[8],
-                                                      map, init_probability)
+                                                      map, init_probability))
         particle_count += 1
 
 
