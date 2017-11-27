@@ -99,7 +99,7 @@ def update_model(scan):
     sorted_particles = sorted(particles, key= lambda particle: particle.probability, reverse= True)
     copy_idx = 0
     gap = num_particles - len(particles)
-    print(gap, len(sorted_particles))
+    print(gap, len(sorted_particles), len(particles))
     while copy_idx < gap:
         copied_particle = sorted_particles[random.randint(0, gap)]
         particles.append(copied_particle)
