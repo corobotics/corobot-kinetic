@@ -25,7 +25,7 @@ def pf_initialize(qrcode_pose):
     y_real = qrcode_pose.y
     orientation = qrcode_pose.theta
     mean = 0
-    covariance = tuple(qrcode_pose.cov.flat)
+    covariance = tuple(qrcode_pose.cov)
     init_probability = 1 / num_particles
 
     particle_count = 0
