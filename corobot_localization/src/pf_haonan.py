@@ -30,6 +30,7 @@ def pf_initialize(qrcode_pose):
     idx = 0
     while idx < len(covariance):
         print(covariance[idx])
+        idx += 1
     init_probability = 1 / num_particles
 
     particle_count = 0
