@@ -98,8 +98,7 @@ def update_model(scan):
     #         prtcle_idx += 0
     # Version 2:
     sorted_particles = sorted(particles, key= lambda particle: particle.probability, reverse= True) # 200 particles
-
-    copy_idx = 0
+    print(len(sorted_particles))
     while len(particles) < num_particles:
         gap = num_particles - len(particles)
         if gap <= len(particles):
