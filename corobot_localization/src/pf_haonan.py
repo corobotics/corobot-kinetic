@@ -43,6 +43,7 @@ def prediction(odom):
     :param odom: Odometry information retrieved by odometer sensors.
     :return: None
     """
+    print("At starting of prediction, length of particles: ", len(particles))
     odom_delta = odom_to_pose(odom)
     delta = ekf.get_odom_delta(odom_delta)
     if delta is not None:
@@ -73,6 +74,7 @@ def update_model(scan):
     :param scan: Laser scan sensor reading information.
     :return: None
     """
+    print("At starting of update, length of particles: ", len(particles))
     print(len(particles))
     particle_count = 0
     while particle_count < len(particles):
@@ -122,8 +124,9 @@ def main():
     particles = []
     pf_initialize(pose)
     # rospy.Subscriber("qrcode_pose", Pose, pf_initialize)
-    print("particles size after initialization: ", len(particles))
+    print("Length of particles after initialization: ", len(particles))
     rospy.Subscriber("odom", Odometry, prediction)
+    print("Length of particles after prediction: ", len(particles))
     rospy.Subscriber("scan", LaserScan, update_model)
     rospy.spin()
 
