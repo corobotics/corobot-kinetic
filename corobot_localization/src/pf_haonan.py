@@ -73,6 +73,7 @@ def update_model(scan):
     :param scan: Laser scan sensor reading information.
     :return: None
     """
+    print(len(particles))
     particle_count = 0
     while particle_count < len(particles):
         # If the particle is already a bad one, kick it out from particle list.
