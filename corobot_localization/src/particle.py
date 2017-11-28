@@ -46,7 +46,7 @@ class Particle:
         # Transfer the traveled distance from unit of meters to unit of pixels.
         pixel_trv_dist = est_trv_dist / self.map.info.resolution
         # Calculate the new location of particle.
-        self.orientation = round(math.fmod(self.orientation + est_orient), (2 * math.pi))
+        self.orientation = round(math.fmod((self.orientation + est_orient), (2 * math.pi)))
         self.x_pos = math.floor(math.cos(self.orientation) * pixel_trv_dist + self.x_pos)
         self.y_pos = math.floor(math.sin(self.orientation) * pixel_trv_dist + self.y_pos)
 
