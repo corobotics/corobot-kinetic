@@ -20,6 +20,7 @@ def pf_initialize(qrcode_pose):
     :param qrcode_pose: QR code sensor reading information.
     :return: None
     """
+    print("Entered initialization.")
     # Get pose information
     x_real = qrcode_pose.x
     y_real = qrcode_pose.y
@@ -35,7 +36,7 @@ def pf_initialize(qrcode_pose):
                                                       covariance[0], covariance[4], covariance[8],
                                                       map, init_probability))
         particle_count += 1
-
+    print("Particles size:", len(particles))
 
 def prediction(odom):
     """
@@ -43,7 +44,7 @@ def prediction(odom):
     :param odom: Odometry information retrieved by odometer sensors.
     :return: None
     """
-    print("At starting of prediction, length of particles: ", len(particles))
+    print("Entered prediction.")
     odom_delta = odom_to_pose(odom)
     delta = ekf.get_odom_delta(odom_delta)
     if delta is not None:
@@ -74,8 +75,7 @@ def update_model(scan):
     :param scan: Laser scan sensor reading information.
     :return: None
     """
-    print("At starting of update, length of particles: ", len(particles))
-    print(len(particles))
+    print("Entered update_model.")
     particle_count = 0
     while particle_count < len(particles):
         # If the particle is already a bad one, kick it out from particle list.
@@ -89,19 +89,7 @@ def update_model(scan):
             else:
                 particle_count += 1
 
-    # TODO: Need to confirm with Dr. Butler with specific approach.
-    # Version 1:
-    # sorted_particles = sorted(particles, key=lambda particle: particle.probability, reverse=True)
-    # prtcle_idx = 0
-    # while len(particles) < 500:
-    #     particles.append(sorted_particles[prtcle_idx])
-    #     if prtcle_idx < len(sorted_particles) - 1:
-    #         prtcle_idx += 1
-    #     else:
-    #         prtcle_idx += 0
-    # Version 2:
-    sorted_particles = sorted(particles, key= lambda particle: particle.probability, reverse= True) # 200 particles
-    print(len(sorted_particles))
+    sorted_particles = sorted(particles, key= lambda particle: particle.probability, reverse= True)
     while len(particles) < num_particles:
         gap = num_particles - len(particles)
         if gap <= len(particles):
@@ -118,15 +106,11 @@ def main():
     map = map_srv().map
     roslib.load_manifest("corobot_localization")
     ekf = EKF()
-    pose = Pose()
     pose_pub = rospy.Publisher("pose", Pose)
     num_particles = 500
     particles = []
-    pf_initialize(pose)
-    # rospy.Subscriber("qrcode_pose", Pose, pf_initialize)
-    print("Length of particles after initialization: ", len(particles))
+    rospy.Subscriber("qrcode_pose", Pose, pf_initialize)
     rospy.Subscriber("odom", Odometry, prediction)
-    print("Length of particles after prediction: ", len(particles))
     rospy.Subscriber("scan", LaserScan, update_model)
     rospy.spin()
 
