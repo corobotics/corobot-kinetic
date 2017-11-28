@@ -30,7 +30,6 @@ def pf_initialize(qrcode_pose):
 
     particle_count = 0
     # Initialize 500 objects of particle
-
     while particle_count < num_particles:
         particles.append(particle.Particle(x_real, y_real, orientation, mean,
                                                       covariance[0], covariance[4], covariance[8],
@@ -98,14 +97,15 @@ def update_model(scan):
     #     else:
     #         prtcle_idx += 0
     # Version 2:
-    sorted_particles = sorted(particles, key= lambda particle: particle.probability, reverse= True)
+    sorted_particles = sorted(particles, key= lambda particle: particle.probability, reverse= True) # 200 particles
+
     copy_idx = 0
-    gap = num_particles - len(particles)
-    # print(gap, len(sorted_particles), len(particles))
-    while copy_idx < gap:
-        copied_particle = sorted_particles[random.randint(0, gap)]
-        particles.append(copied_particle)
-        copy_idx += 1
+    while len(particles) < num_particles:
+        gap = num_particles - len(particles)
+        if gap <= len(particles):
+            particles.append(sorted_particles[random.randint(0, gap)])
+        else:
+            particles.append(sorted_particles[random.randint(0, len(particles))])
 
 
 def main():
