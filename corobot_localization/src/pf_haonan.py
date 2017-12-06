@@ -5,6 +5,7 @@ import random
 
 import rospy
 import particle
+import copy
 
 from corobot_common.msg import Pose
 from nav_msgs.msg import Odometry
@@ -33,8 +34,8 @@ def pf_initialize(qrcode_pose):
     # Initialize 500 objects of particle
     while particle_count < num_particles:
         particles.append(particle.Particle(x_real, y_real, orientation, mean,
-                                                      covariance[0], covariance[4], covariance[8],
-                                                      map, init_probability))
+                                           covariance[0], covariance[4], covariance[8],
+                                           map, init_probability))
         particle_count += 1
     print("Particles size:", len(particles))
 
@@ -89,13 +90,20 @@ def update_model(scan):
             else:
                 particle_count += 1
 
+    # Make copies of the most probable particles to replace the popped particles.
     sorted_particles = sorted(particles, key= lambda particle: particle.probability, reverse= True)
-    while len(particles) < num_particles:
-        gap = num_particles - len(particles)
-        if gap <= len(particles):
-            particles.append(sorted_particles[random.randint(0, gap)])
-        else:
-            particles.append(sorted_particles[random.randint(0, len(particles))])
+    if len(particles) > 0:
+        while len(particles) < num_particles:
+            gap = num_particles - len(particles)
+            if gap < len(sorted_particles):
+                copied_particle = copy.deepcopy(sorted_particles[random.randint(0, gap)])
+            elif gap == len(sorted_particles):
+                copied_particle = copy.deepcopy(sorted_particles[random.randint(0, gap - 1)])
+            else:
+                copied_particle = copy.deepcopy(sorted_particles[random.randint(0, len(sorted_particles) - 1)])
+            particles.append(copied_particle)
+    else:
+        print("All particles lost.")
 
 
 def main():

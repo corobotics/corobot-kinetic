@@ -23,14 +23,14 @@ class Particle:
         x_pos = x_exact + round(random.gauss(mu, x_sigma), 4) * random.randint(-1, 1)
         y_pos = y_exact + round(random.gauss(mu, y_sigma), 4) * random.randint(-1, 1)
         self.map = map
-        # Transfer the (x, y) coordinates with units of meters to units of pixels.
+        # Transfer the (x, y) coordinates from units of meters to units of pixels.
         self.x_pos = math.floor(x_pos / self.map.info.resolution)
         self.y_pos = math.floor(y_pos / self.map.info.resolution)
         self.orientation = orient_exact + round(random.gauss(mu, orientation_sigma), 4)
         # All particles shares same probability.
         self.probability = init_probability
 
-    def predict_update(self, trv_dist, new_orient, mu, dist_sigma, orient_sigma):
+    def predict_update(self, trv_dist, delta_orient, mu, dist_sigma, orient_sigma):
         """
         Predict the particle's new location with given parameters.
         :param trv_dist: Traveled distance in meters.
@@ -42,7 +42,7 @@ class Particle:
         """
         # Add Gausssian distributed noises to traveled distance and orientation.
         est_trv_dist = trv_dist + round(random.gauss(mu, dist_sigma), 4) * random.randint(-1, 1)
-        est_orient = new_orient + round(random.gauss(mu, orient_sigma), 4) * random.randint(-1, 1)
+        est_orient = delta_orient + round(random.gauss(mu, orient_sigma), 4) * random.randint(-1, 1)
         # Transfer the traveled distance from unit of meters to unit of pixels.
         pixel_trv_dist = est_trv_dist / self.map.info.resolution
         # Calculate the new location of particle.
@@ -76,6 +76,7 @@ class Particle:
         starting_scan = self.orientation + starting
         ending_scan = self.orientation + ending
 
+        # update the probability of particle.
         self.probability = self.particle_quality(starting_scan, ending_scan, laser_scan.range_max,
                                                  laser_scan.range_min, increment, laser_scan.ranges)
 
@@ -94,6 +95,7 @@ class Particle:
         # dist_expec is used to describe the expectation of the ratio of real reading to estimated reading.
         dist_expec = 0
         reading_counter = 0
+        # particle_quality is used to store the particle probability.
         particle_quality = 0
 
         # note theta is in original (right-handed) coords
@@ -141,6 +143,10 @@ class Particle:
             if distance[pix_occupied_idx] is True:
                 est_scan = math.sqrt((distance[0] - x_coord) ** 2 + (distance[1] - y_coord) ** 2) \
                                 * self.map.info.resolution
+                if est_scan > range_max:
+                    est_scan = range_max
+                elif est_scan < range_min:
+                    est_scan = range_min
             # Else, the sensor reading is the max of scanning range.
             else:
                 est_scan = range_max
@@ -160,6 +166,7 @@ class Particle:
         # of used readings.
         dist_expec /= reading_counter
 
+        # Probability is defined based on the ratio of actual reading to expected reading.
         if dist_expec <= 0.8:
             particle_quality = 0.4
         elif dist_expec <= 0.95:
