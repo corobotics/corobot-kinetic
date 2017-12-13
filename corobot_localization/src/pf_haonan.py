@@ -65,7 +65,7 @@ def prediction(odom):
     for each_particle in particles:
         each_particle.predict_update(trv_dist, delta_theta, mean, trv_sigma, orient_sigma)
         # After updating, if particle's new location is "in the wall", it's definitely a "bad" particle.
-        if each_particle.loc_check(map) is False:
+        if each_particle.loc_check() is False:
             each_particle.probability = 0
         particle_count += 1
 
