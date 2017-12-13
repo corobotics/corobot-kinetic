@@ -56,7 +56,8 @@ class Particle:
         :return: True if particle is in open area; False if particle is in the wall or a mapped obstacle.
         """
         i = self.x_pos + (self.map.info.height - self.y_pos - 1) * self.map.info.width
-        occ = self.map.data[int(i)]
+        i = int(i)
+        occ = self.map.data[i]
         if occ > 50:
             return False
         else:
