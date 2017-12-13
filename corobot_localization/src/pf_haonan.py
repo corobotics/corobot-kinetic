@@ -105,6 +105,34 @@ def update_model(scan):
     else:
         print("All particles lost.")
 
+    # For evaluating the PF algo.
+    mean_x = 0
+    mean_y = 0
+    mean_theta = 0
+    sigma_x = 0
+    sigma_y = 0
+    sigma_theta = 0
+    for each_particle in particles:
+        mean_x += each_particle.x_pos
+        mean_y += each_particle.y_pos
+        mean_theta += each_particle.orientation
+    mean_x /= len(particles)
+    mean_y /= len(particles)
+    mean_theta /= len(particles)
+
+    for  each_particle in particles:
+        sigma_x += (each_particle.x_pos - mean_x) ** 2
+        sigma_y += (each_particle.y_pos - mean_y) ** 2
+        sigma_theta += (each_particle.orientation - mean_theta) ** 2
+    sigma_x = math.sqrt(sigma_x / len(particles))
+    sigma_y = math.sqrt(sigma_y / len(particles))
+    sigma_theta = math.sqrt(sigma_theta / len(particles))
+    mean_x *= map.info.resolution
+    mean_y *= map.info.resolution
+
+    print("Robot at:", mean_x, ",", mean_y, ", pointing at:",
+          mean_theta, "Std deviations:", sigma_x, sigma_y, sigma_theta)
+
 
 def main():
     global pose_pub, ekf, particles, map, num_particles
