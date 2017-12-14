@@ -21,7 +21,6 @@ def pf_initialize(qrcode_pose):
     :param qrcode_pose: QR code sensor reading information.
     :return: None
     """
-    print("Entered initialization.")
     # Get pose information
     x_real = qrcode_pose.x
     y_real = qrcode_pose.y
@@ -45,7 +44,6 @@ def prediction(odom):
     :param odom: Odometry information retrieved by odometer sensors.
     :return: None
     """
-    print("Entered prediction.")
     odom_delta = odom_to_pose(odom)
     delta = ekf.get_odom_delta(odom_delta)
     if delta is not None:
@@ -76,7 +74,6 @@ def update_model(scan):
     :param scan: Laser scan sensor reading information.
     :return: None
     """
-    print("Entered update_model.")
     particle_count = 0
     while particle_count < len(particles):
         # If the particle is already a bad one, kick it out from particle list.
@@ -90,9 +87,9 @@ def update_model(scan):
             else:
                 particle_count += 1
 
-    # Make copies of the most probable particles to replace the popped particles.
-    sorted_particles = sorted(particles, key= lambda particle: particle.probability, reverse= True)
     if len(particles) > 0:
+        # Make copies of the most probable particles to replace the popped particles.
+        sorted_particles = sorted(particles, key=lambda particle: particle.probability, reverse=True)
         while len(particles) < num_particles:
             gap = num_particles - len(particles)
             if gap < len(sorted_particles):
@@ -146,9 +143,11 @@ def main():
     pose_pub = rospy.Publisher("pose", Pose)
     num_particles = 500
     particles = []
-    rospy.Subscriber("qrcode_pose", Pose, pf_initialize)
-    rospy.Subscriber("odom", Odometry, prediction)
-    rospy.Subscriber("scan", LaserScan, update_model)
+    if len(particles) == 0:
+        rospy.Subscriber("qrcode_pose", Pose, pf_initialize)
+    if len(particles) > 0:
+        rospy.Subscriber("odom", Odometry, prediction)
+        rospy.Subscriber("scan", LaserScan, update_model)
     rospy.spin()
 
 
