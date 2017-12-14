@@ -44,6 +44,7 @@ def prediction(odom):
     :param odom: Odometry information retrieved by odometer sensors.
     :return: None
     """
+    print("entered prediction", len(particles))
     odom_delta = odom_to_pose(odom)
     delta = ekf.get_odom_delta(odom_delta)
     if delta is not None:
@@ -74,6 +75,7 @@ def update_model(scan):
     :param scan: Laser scan sensor reading information.
     :return: None
     """
+    print("entered update", len(particles))
     particle_count = 0
     while particle_count < len(particles):
         # If the particle is already a bad one, kick it out from particle list.
