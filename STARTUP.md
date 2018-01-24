@@ -4,6 +4,7 @@ First, make sure the battery situation is correct:
 
 * Unplug the Create from its charger
 * Find a Kinect battery, plug in the Kinect and turn it on (the connector along the Kinect cable should light up)
+* Turn on the Create base
 
 Next, open up a terminal and run:
 
