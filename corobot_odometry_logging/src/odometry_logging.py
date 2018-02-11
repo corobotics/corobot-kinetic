@@ -9,7 +9,7 @@ from corobot_common.msg import Pose
 FEATURES = {
     'odom': None,
     'cmd_vel': None,
-    'qr_pose': None
+    'qr_pose': Pose()
 }
 
 def odom_callback(odom):
@@ -34,9 +34,9 @@ def get_feature_vector():
             FEATURES['cmd_vel'].linear.x,
             FEATURES['cmd_vel'].linear.y,
             FEATURES['cmd_vel'].angular.z,
-            #FEATURES['qrcode_pose'].x,
-            #FEATURES['qrcode_pose'].y,
-            #FEATURES['qrcode_pose'].theta,
+            FEATURES['qr_pose'].x,
+            FEATURES['qr_pose'].y,
+            FEATURES['qr_pose'].theta,
         ]
     except:
         return None
