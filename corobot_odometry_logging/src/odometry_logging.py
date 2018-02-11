@@ -42,15 +42,15 @@ def get_feature_vector():
         return None
 
 def log_status():
-    with get_feature_vector() as vector:
-        if vector:
-            rospy.loginfo(vector)
+    vector = get_feature_vector()
+    if vector:
+        rospy.loginfo(vector)
 
 def main():
     rospy.init_node("odometry_logging")
     rospy.Subscriber("odom", Odometry, odom_callback)
     rospy.Subscriber("/mobile_base/commands/velocity", Twist, cmd_vel_callback)
-    rospy.Subscriber("qrcode_pose", Twist, qrcode_pose_callback)
+    rospy.Subscriber("qrcode_pose", Pose, qrcode_pose_callback)
 
     while not rospy.is_shutdown():
         log_status()
