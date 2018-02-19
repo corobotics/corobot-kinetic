@@ -11,6 +11,7 @@ FEATURES = {
     'cmd_vel': None,
     'qr_pose': Pose()
 }
+LOG_HERTZ = 10
 
 def odom_callback(odom):
     global FEATURES
@@ -52,8 +53,10 @@ def main():
     rospy.Subscriber("/mobile_base/commands/velocity", Twist, cmd_vel_callback)
     rospy.Subscriber("qrcode_pose", Pose, qrcode_pose_callback)
 
+    sleep_rate = rospy.Rate(LOG_HERTZ)
     while not rospy.is_shutdown():
         log_status()
+        sleep_rate.sleep()
     rospy.spin()
 
 if __name__=='__main__':
