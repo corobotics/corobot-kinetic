@@ -12,6 +12,7 @@ BarcodeHandler::BarcodeHandler(ros::Publisher &chatter_pub,string dev,string csv
 
 	ros::NodeHandle nodeHandle;
 	qrCodeCountPublisher = nodeHandle.advertise<corobot_common::Goal>("ch_qrcodecount", 1);
+	barcodeLocPublisher = nodeHandle.advertise<corobot_common::Pose>("barcode_location", 1);
 	qrCount = 0;
 	seenQRPose.x = -1.0; seenQRPose.y = -1.0;
 }
@@ -35,6 +36,11 @@ void BarcodeHandler::image_callback(Image &image) {
         istringstream(csvreader.getX(symbol->get_data())) >> barcodeX;
         istringstream(csvreader.getY(symbol->get_data())) >> barcodeY;
         barcodeOrientation = csvreader.getOrientation(symbol->get_data());
+
+	// publish barcode location
+	corobot_common::Pose barcodeLoc;
+	barcodeLoc.x = barcodeX; barcodeLoc.y = barcodeY;
+	barcodeLocPublisher.publish(barcodeLoc);
 
         // focal length(calculated before) and test distance
         float f = 275.0, D = 25.0;
@@ -234,6 +240,7 @@ bool BarcodeHandler::checkIfNewQR(corobot_common::Pose qrPose){
 	else
 		ss << "R" << ++qrCount;
 	topicMsg.name = ss.str(); qrCodeCountPublisher.publish(topicMsg);
+
     
 	return true;
 }

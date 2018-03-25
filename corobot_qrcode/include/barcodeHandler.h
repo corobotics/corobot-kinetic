@@ -21,6 +21,7 @@ public:
 
 	int qrCount;
 	ros::Publisher qrCodeCountPublisher;
+	ros::Publisher barcodeLocPublisher;
     ros::Publisher publisher;
     Pt point[4];
     int lengthPixelL, lengthPixelR;

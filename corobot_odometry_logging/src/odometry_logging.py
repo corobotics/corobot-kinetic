@@ -9,7 +9,8 @@ from corobot_common.msg import Pose
 FEATURES = {
     'odom': None,
     'cmd_vel': None,
-    'qr_pose': Pose()
+    'qr_pose': Pose(),
+    'barcode_loc': Pose(),
 }
 LOG_HERTZ = 10
 
@@ -25,6 +26,10 @@ def qrcode_pose_callback(qr_pose):
     global FEATURES
     FEATURES['qr_pose'] = qr_pose
 
+def barcode_loc_callback(barcode_loc):
+    global FEATURES
+    FEATURES['barcode_loc'] = barcode_loc
+
 def get_feature_vector():
     try:
         return [
@@ -38,8 +43,11 @@ def get_feature_vector():
             FEATURES['qr_pose'].x,
             FEATURES['qr_pose'].y,
             FEATURES['qr_pose'].theta,
+	    FEATURES['barcode_loc'].x,
+            FEATURES['barcode_loc'].y,
         ]
-    except:
+    except Exception as e:
+        print(e)
         return None
 
 def log_status():
@@ -52,6 +60,7 @@ def main():
     rospy.Subscriber("odom", Odometry, odom_callback)
     rospy.Subscriber("/mobile_base/commands/velocity", Twist, cmd_vel_callback)
     rospy.Subscriber("qrcode_pose", Pose, qrcode_pose_callback)
+    rospy.Subscriber("barcode_location", Pose, barcode_loc_callback)
 
     sleep_rate = rospy.Rate(LOG_HERTZ)
     while not rospy.is_shutdown():
