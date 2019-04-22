@@ -13,6 +13,7 @@ BarcodeHandler::BarcodeHandler(ros::Publisher &chatter_pub,string dev,string csv
 	ros::NodeHandle nodeHandle;
 	qrCodeCountPublisher = nodeHandle.advertise<corobot_common::Goal>("ch_qrcodecount", 1);
 	barcodeLocPublisher = nodeHandle.advertise<corobot_common::Pose>("barcode_location", 1);
+	barcodeMeasurePublisher = nodeHandle.advertise<corobot_common::Target>("landmark_info", 1);
 	qrCount = 0;
 	seenQRPose.x = -1.0; seenQRPose.y = -1.0;
 }
@@ -78,6 +79,19 @@ void BarcodeHandler::image_callback(Image &image) {
         cbx = offsetDistance;
         cby = sqrt((distanceAvg * distanceAvg) - (offsetDistance * offsetDistance));
         cbtheta = angleAvg;
+
+        corobot_common Target landmarkInfo;
+        landmarkInfo.dist = distanceAvg;
+        landmarkInfo.angle = angleAvg;
+        if (isLeft(device_name))
+        {
+            landmarkInfo.camera_id = 0
+        }
+        else
+        {
+            landmarkInfo.camera_id = 1
+        }
+        barcodeMeasurePublisher.publish(landmarkInfo)
 
         ROS_INFO_STREAM(" ____---CBTHETA!:--- "<<cbtheta);
 	alpha = acos(offsetDistance / distanceAvg);
