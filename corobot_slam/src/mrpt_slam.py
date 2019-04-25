@@ -8,34 +8,37 @@ import rospy
 import copy
 
 # From ... import ... are here.
-from corobot_common.msg import Pose
 from corobot_common.msg import Target
 from nav_msgs.msg import Odometry
-from sensor_msgs.msg import LaserScan
+from geometry_msgs.msg import Twist, Vector3
 from ekf_slam import EKFSLAM
-
 from corobot_slam.src.montecarlo import MonteCarlo
 from corobot_localization.src.ekf import EKF
-from utils import odom_to_pose
+from collections import namedtuple
 
 # Global variables are here.
 ekf = EKF()
 smart_slam = EKFSLAM()
 traditional_slam = EKFSLAM()
-seen_lms = dict()
-accepted_lms = dict()
-laser_landmark = 0
-robot_poses = list()
 goals = list()
-scale = 30
-accept_capacity = 50
+tolerance = 0.2
+batch = 1
 
-global current_pose
-global smart_lm
+global landmark_choosing
 
 
 # Class definitions are here.
-class LandmarkRL(MonteCarlo):
+class Landmark:
+    __slots__ = {"name", "x", "y", "cov"}
+
+    def __init__(self, name, x, y):
+        self.name = name
+        self.x = x
+        self.y = y
+        self.cov = numpy.identity(2, numpy.int16)
+
+
+class LandmarkChoice(MonteCarlo):
     """
     Implements the paper version RL algorithm for handling landmarks.
     """
@@ -45,7 +48,7 @@ class LandmarkRL(MonteCarlo):
         """
         Constructor of landmark choosing algorithm.
         """
-        self.sar = dict()
+        self.sar = dict()   # sar holds the rewards for state-action pairs.
         self.states = list()
         self.actions = ["Accept", "Reject"]
         self.kis = [random.uniform(0, 0.5), random.uniform(0.5, 1)]
@@ -59,23 +62,23 @@ class LandmarkRL(MonteCarlo):
     def policy(self, state, params):
         """
         Choose action based on given state. Used KNN algorithm to find action.
-        :param state: The new state based on which an action is to be taken.
-        :param params: A list of other parameters
+        :param state: The new state based on which an action is to be taken. It's a tuple.
+        :param params: A list containing [capacity of integrated landmarks, total number of landmarks]
         :return action: The action to be taken.
         """
-        landmark_cap, visible_lm = params[0], params[1]
+        integrate_capacity, number_lms = params[0], params[1]
         action_reward = dict()
         # Search K nearest neighboring states.
         for one_action in self.sar.keys():
-            sr_dict = self.sar[one_action]
+            sr_dict = self.sar[one_action]  # sr_dict takes state as keys and rewards as values.
             action_reward[one_action] = self.get_neighbor_rewards(state, sr_dict)
 
         # Here is policy
         self.epsilon = 1 / (len(self.sar) + 1)
         if action_reward["Accept"] != action_reward["Reject"] and self.kis[0] <= 1 - self.epsilon:
             action = max(action_reward)
-        elif (action_reward["Accept"] == action_reward["Reject"] or self.kis[0] <= self.epsilon) \
-            and self.kis[1] < (landmark_cap / visible_lm):
+        elif (action_reward["Accept"] == action_reward["Reject"] or self.kis[0] <= self.epsilon) and \
+                self.kis[1] < (integrate_capacity / number_lms):
             action = "Accept"
         else:
             action = "Reject"
@@ -120,125 +123,191 @@ class LandmarkRL(MonteCarlo):
         self.sar[action][state] = reward
 
 
-class Landmark:
-    __slots__ = {"name", "x", "y", "orientation"}
-
-    def __init__(self, name, pose):
-        self.name = name
-        self.x = pose[0]
-        self.y = pose[1]
-        # self.orientation = pose[2]
-
-    def pose_update(self, new_pose):
-        self.x = new_pose[0]
-        self.y = new_pose[1]
-        # self.orientation = new_pose[2]
-
-
 # Functions are here.
-def calc_lmpose(robot_pose, dist, angle, camera_angle):
+def calc_lmpose(robot_pose, observation):
     """
     Calculate the pose of a landmark, given robot's pose and its camera readings.
     :param robot_pose: Robot pose.
-    :param dist: Range reading given by robot camera.
-    :param angle: Angle reading given by robot camera.
-    :param camera_angle: The angle between camera's orientation and robot's orientation. -pi / 2 or pi / 2.
+    :param observation: Range reading given by robot camera.
     :return: Pose of a landmark.
     """
-    lm_pose = Pose()
-    lm_pose.header.frame_id = "landmark"
-    robot_lm_angle = robot_pose.theta + camera_angle + angle
-    lm_pose.x = math.cos(robot_lm_angle) * dist
-    lm_pose.y = math.sin(robot_lm_angle) * dist
-    lm_pose.theta = 0
-    lm_pose.theta = 0
+    lm_x = observation.dist * math.cos(observation.angle + robot_pose[2]) + robot_pose[0]
+    lm_y = observation.dist * math.sin(observation.angle + robot_pose[2]) + robot_pose[1]
+    observed_lm_loc = numpy.matrix([lm_x, lm_y]).transpose()
 
-    return lm_pose
+    return observed_lm_loc
 
 
-def calc_states(robot_pose, lm_pose, yaw_angle):
-    global seen_lms
-    states = list()
+def calc_states(slam, observation):
+    """
+    Calculate the states for reinforcement learning.
+    :param slam: The SLAM algorithm being used here.
+    :param observation: Observation of an unintegrated landmark. Contains name, dist, angle, and cov.
+    :return:
+    """
+    state_list = list()
+
+    robot_info = slam.get_robot_pose()
+    robot_pose, robot_cov = robot_info[0], robot_info[1]
 
     if goals:
-        subgoal = goals.pop(0)
-        goal_dist = math.sqrt((subgoal[0] - robot_pose.x) ** 2 + (subgoal[1] - robot_pose.y) ** 2)
+        subgoal = goals[0]
+        goal_dist = math.sqrt((subgoal[0] - robot_pose[0].item()) ** 2 + (subgoal[1] - robot_pose[1].item()) ** 2)
     else:
-        dist = 0
+        goal_dist = 0
 
     # First dimension of states. Distance to subgoal.
-    states.append(goal_dist)
+    state_list.append(goal_dist)
     # Second dimension of states. Number of accepted landmarks.
-    states.append(len(accepted_lms))
+    state_list.append(len(slam.get_integrated_lm()))
     # Third dimension of states. Yaw angle of new landmark.
-    states.append(yaw_angle)
+    state_list.append(observation.angle)
     # Fourth dimension of states. Distance of new landmark to closest landmark.
-    temp_dist_dict = dict()
-    for each_landmark in seen_lms.keys():
-        one_landmark = seen_lms[each_landmark]
-        distance = math.sqrt((one_landmark.x - robot_pose.x) ** 2 + (one_landmark.y - robot_pose.y) ** 2)
-        temp_dist_dict[each_landmark] = distance
-
-    closest_lm = seen_lms[min(temp_dist_dict)]
-    dim_four = math.sqrt((closest_lm.x - lm_pose.x) ** 2 + (closest_lm.y - lm_pose.y) ** 2)
-    states.append(dim_four)
+    potential_lm_loc = calc_lmpose(robot_pose, observation)
+    first_lm_loc = slam.get_landmark_loc(min(slam.get_integrated_lm()))[0]
+    shortest_dist = get_distance(potential_lm_loc, first_lm_loc)
+    for one_lm in slam.get_integrated_lm().keys():
+        landmark_loc = slam.get_landmark_loc(one_lm)[0]
+        if get_distance(potential_lm_loc, landmark_loc) < shortest_dist:
+            shortest_dist = get_distance(potential_lm_loc, landmark_loc)
+    state_list.append(shortest_dist)
     # Fifth dimension of states. Uncertainty of robot pose in terms of entropy
-    dim_five = math.log(math.sqrt((2 * math.pi * math.e) ** 3 * numpy.linalg.det(robot_pose.cov)))
-    states.append(dim_five)
+    dim_five = math.log(math.sqrt((2 * math.pi * math.e) ** 3 * numpy.linalg.det(robot_cov)))
+    state_list.append(dim_five)
 
-    return states
+    state = tuple(state_list)
+    return state
+
+
+def get_distance(point_1, point_2):
+    """
+    Calculate the Euclidean distance between point_1 and point_2
+    :param point_1: Coordinates of point_1 in form of a column vector.
+    :param point_2: Coordinates of point_2 in form of a column vector.
+    :return: The comptuted Euclidean distance.
+    """
+    delta = point_1 - point_2
+    distance = math.sqrt(numpy.dot(delta.transpose(), delta).item())
+
+    return distance
+
+
+def mobilize_robot(robot_pose):
+    global tolerance, goals
+
+    twist = Twist()
+    # twist.linear = Vector3()
+    twist.linear.x = numpy.float64(0.0)
+    twist.linear.y = numpy.float64(0.0)
+    twist.linear.z = numpy.float64(0.0)
+    # twist.angular = Vector3()
+    twist.angular.x = numpy.float64(0.0)
+    twist.angular.y = numpy.float64(0.0)
+    twist.angular.z = numpy.float64(0.0)
+
+    next_goal = goals[0]
+    distance = math.sqrt((robot_pose.x - next_goal[0]) ** 2 + (robot_pose.y - next_goal[1]) ** 2)
+    if distance <= tolerance:
+        goals.pop(0)
+    else:
+        # Calculate rotation based on destination
+        target_angle = math.atan2((next_goal[1] - robot_pose.y), (next_goal[0] - robot_pose.x))
+        rotation = target_angle - robot_pose.theta
+        # twist.linear.x = numpy.float64(math.cos(target_angle) * 0.5)
+        # twist.linear.y = numpy.float64(math.sin(target_angle) * 0.5)
+        twist.linear.x = numpy.float64(0.1)
+        # twist.linear.y = numpy.float64(math.sin(target_angle) * 0.5)
+        if rotation != 0:
+            twist.angular.z = numpy.float64(math.pi * math.copysign(0.1, rotation))
+
+    return twist
+
+
+def log_info(batch_number):
+    t_log_name = "traditional_slam_log.txt"
+    s_log_name = "smart_slam_log.txt"
+
+    tradition_log = open(t_log_name, "a")
+    smart_log = open(s_log_name, "a")
+
+    tradition_log.write("Batch %d:\n" % batch_number)
+    smart_log.write("Batch %d:\n" % batch_number)
+
+    t_r_pose = traditional_slam.get_robot_pose()[0]
+    tradition_log.write("Robot pose:\n" + str(t_r_pose) + "\n")
+    s_r_pose = smart_slam.get_robot_pose()[0]
+    smart_log.write("Robot pose:\n" + str(s_r_pose) + "\n")
+
+    for each_lm in traditional_slam.get_integrated_lm().keys():
+        lm_name = each_lm
+        if lm_name in smart_slam.get_integrated_lm():
+            t_lm_loc = traditional_slam.get_landmark_loc(lm_name)[0]
+            s_lm_loc = smart_slam.get_landmark_loc(lm_name)[0]
+
+            tradition_log.write("Landmark " + str(lm_name) + " location: \n" + str(t_lm_loc) + "\n")
+            smart_log.write("Landmark " + str(lm_name) + " location: \n" + str(s_lm_loc) + "\n")
 
 
 def landmark_callback(qrcode_info):
-    global laser_landmark, current_pose, smart_lm
+    global landmark_choosing, traditional_slam, smart_slam, batch
 
-    robot_pose = copy.deepcopy(current_pose)
-    landmark_name = qrcode_info.name
-    landmark_dist = qrcode_info.dist
-    landmark_angle = qrcode_info.angle
+    lm_readings = namedtuple("LMReading", "name, dist, angle, cov")
+    lm_readings.name = qrcode_info.name
+    lm_readings.dist = qrcode_info.dist
     if qrcode_info.camera_id == 0:
-        camera_angle = math.pi / 2
+        lm_readings.angle = qrcode_info.angle + math.pi / 2
     else:
-        camera_angle = -math.pi / 2
-    landmark_pose = calc_lmpose(robot_pose, landmark_dist, landmark_angle, camera_angle)
+        lm_readings.angle = qrcode_info.angle - math.pi / 2
+    lm_readings.cov = numpy.identity(2, numpy.int16)
 
-    new_lm = Landmark(landmark_name, landmark_pose)
+    # t_robot_pose = copy.deepcopy(traditional_slam.get_robot_pose()[0])
 
-    seen_lms[new_lm.name] = new_lm
-    yaw_angle = camera_angle + landmark_angle
-    new_lm_states = calc_states(robot_pose, landmark_pose, yaw_angle)
+    # Traditional SLAM will update with the landmark info no matter what.
+    traditional_slam.update(lm_readings)
+
+    # Smart SLAM will evaluate to see whether to use this landmark or not.
+    s_robot_info = copy.deepcopy(smart_slam.get_robot_pose())
+    s_robot_pose, s_robot_cov = s_robot_info[0], s_robot_info[1]
+    number_integrated_lm = len(smart_slam.get_integrated_lm())
+
+    calc_states(smart_slam, lm_readings)
 
     # Use RL to decide whether to take this landmark.
-    action = smart_lm.policy(new_lm_states, [accept_capacity, len(accepted_lms)])
-    if action == "Accept":
-        accepted_lms.append(new_lm)
+    if lm_readings.name in smart_slam.get_integrated_lm:
+        smart_slam.update(lm_readings)
+    else:
+        new_lm_states = calc_states(s_robot_pose, lm_readings)
+        integrate_capacity = 20
+        landmark_capacity = 50
+        action = landmark_choosing.policy(new_lm_states, [integrate_capacity, landmark_capacity])
+        if action == "Accept" and number_integrated_lm < integrate_capacity:
+            smart_slam.update(lm_readings)
 
-
-def update_map(pose):
-    global ekf
-
-    ekf.update_pos(pose)
-    current_pose = ekf.get_pose()
+    log_info(batch)
+    batch += 1
 
 
 def odom_callback(odometry):
     """
-    Handles the odometry messages. Once receiving an odometry, calculates the current pose of robot.
+    Handles the odometry messages. Once receiving an odometry, computes velocity for robot to move,
+    and use it as control vector for slam prediction.
     :param odometry: The odometry message.
     :return: None
     """
-    global ekf, current_pose, smart_slam, traditional_slam
+    global ekf, smart_slam, traditional_slam
 
-    odom_pose = odom_to_pose(odometry)
-    ekf.predict(odom_pose)
-    # current_pose is set as the latest known pose of robot.
-    current_pose = ekf.get_pose()
-    # robot_poses records the trajectory of the robot.
-    last_pose = current_pose -
-    robot_poses.append(current_pose)
-    last_pose =
+    robot_pose = namedtuple("Pose", "x, y, theta")
+    robot_pose.x = odometry.pose.pose.position.x
+    robot_pose.y = odometry.pose.pose.position.y
+    robot_pose.theta = 2 * math.atan2(odometry.pose.pose.orientation.z, odometry.pose.pose.orientation.w)
+    velo = mobilize_robot(robot_pose)
+    velocity_pub = rospy.Publisher("/r1/cmd_vel", Twist)
 
-    smart_slam.predict()
+    control_vector = numpy.matrix([velo.linear.x, velo.linear.y, velo.angular.z]).transpose()
+    traditional_slam.predict(control_vector)
+    smart_slam.predict(control_vector)
+
+    velocity_pub.publish(velo)
 
 
 def corobot_smart_slam():
@@ -254,22 +323,23 @@ def run_experiment():
     Main function for running experiment. Robot will run smart SLAM and traditional SLAM at the same time.
     :return:
     """
-    global goals, smart_lm
+    global goals, landmark_choosing
 
     rospy.init_node("smart_slam_exp")
 
     goal_file = "/home/oralas/Documents/Capstone/Goal Info"
     goals_info = open(goal_file)
 
-    for lines in goals_info:
-        x, y = int(lines.split(",")[0]), int(lines.split(",")[1])
+    for line in goals_info:
+        one_dest = line.split(",")
+        x, y = float(one_dest[0]), float(one_dest[1])
         goals.append([x, y])
 
-    smart_lm = LandmarkRL(15)
+    landmark_choosing = LandmarkChoice(10)
 
-    rospy.Subscriber("landmark_info", Target, landmark_callback)
-    rospy.Subscriber("odom", Odometry, odom_callback)
-    binary_model = True
+    if len(goals) > 0:
+        rospy.Subscriber("landmark_info", Target, landmark_callback)
+        rospy.Subscriber("odom", Odometry, odom_callback)
 
 
 if __name__ == "__main__":
