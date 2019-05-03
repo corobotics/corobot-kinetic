@@ -48,6 +48,18 @@ void CSVReader::readFile()
     }
 }
 
+string CSVReader::getName(string url)
+{
+    url.erase(url.find_last_not_of(" \n\r\t")+1);
+    string temp;
+    for (unsigned int i = 1; i < data.size(); i++) {
+        temp = data[i][6];
+        if (url.compare(temp) == 0)
+            return data[i][0];
+    }
+    return "";
+}
+
 string CSVReader::getX(string url)
 {
     url.erase(url.find_last_not_of(" \n\r\t")+1);

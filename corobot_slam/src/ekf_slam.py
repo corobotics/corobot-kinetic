@@ -1,21 +1,8 @@
+#!/usr/bin/env python
+
 import rospy
 import math
 import numpy
-
-from corobot_common.msg import Pose
-from utils import column_vector, coord_transform, get_offset, reduce_covariance
-
-
-# class Landmark:
-#     __slots__ = {"id", "x", "y", "cov"}
-#
-#     def __init__(self, id, pose):
-#         self.id = id
-#         self.x = pose.x
-#         self.y = pose.y
-#         self.cov = numpy.matrix([[1, 0, 0],
-#                                  [0, 1, 0],
-#                                  [0, 0, 0]])
 
 
 class EKFSLAM:
@@ -23,21 +10,19 @@ class EKFSLAM:
     This is class for robotics Extended Kalman Filter Simultaneous Localization and Mapping algorithm, with limited
     modifiability. (Because I'm not that smart, at least not at present.)
     """
-    __slots__ = {"mean_mat", "cov_mat", "gain", "motion_cov", "camera_cov", "landmarks"}
+    __slots__ = {"mean_mat", "cov_mat", "gain", "landmarks"}
 
-    def __init__(self, mean_mat=numpy.zeros([3, 1], numpy.int16), cov_mat=numpy.zeros([3, 3], numpy.int16),
-                 motion_cov=numpy.identity(3, numpy.int16), camera_cov=numpy.identity(2, numpy.int16)):
+    def __init__(self, mean_mat=numpy.zeros([3, 1], numpy.int16), cov_mat=numpy.identity(3, numpy.int16)):
         self.mean_mat = mean_mat
         self.cov_mat = cov_mat
         self.gain = None
-        self.motion_cov = motion_cov
-        self.camera_cov = camera_cov
         self.landmarks = dict()
 
-    def predict(self, control_vector):
+    def predict(self, control_vector, motion_cov):
         """
         Calculate new mean matrix and covariance matrix with given control matrix.
         :param control_vector: The change of robot location, in form of column vector [x, y, theta]
+        :param motion_cov: Covariance matrix of motion.
         :return:
         """
         zero_mat = numpy.zeros([3, 2 * len(self.landmarks)], numpy.int16)
@@ -52,36 +37,35 @@ class EKFSLAM:
         i_size = jacobian_f.shape[0]
         jacobian_f = numpy.identity(i_size, numpy.int16) + jacobian_f
 
-        resized_motion_cov = numpy.dot(numpy.dot(f1_mat.transpose(), self.motion_cov), f1_mat)
+        resized_motion_cov = numpy.dot(numpy.dot(f1_mat.transpose(), motion_cov), f1_mat)
         self.cov_mat = numpy.dot(numpy.dot(jacobian_f, self.cov_mat), jacobian_f.transpose()) + resized_motion_cov
 
-    def upate(self, observation):
+    def update(self, observation, camera_cov):
         """
         Responsible of updating the predicted values with Kalman Gain. This is divided into two parts.
         If observed landmark is a new one, then integrate it; Else, update the model.
         :param observation: Contains information in form of .name, .dist, .angle, and .cov.
+        :param camera_cov: Covariance of observation.
         :return:
         """
+        # Observation of a unintegrated landmark and we will integrate it now.
         if observation.name not in self.landmarks:
-            lm_x = observation.dist * math.cos(observation.angle + self.mean_mat[2]) + self.mean_mat[0]
-            lm_y = observation.dist * math.sin(observation.angle + self.mean_mat[2]) + self.mean_mat[1]
+            lm_x = observation.dist * math.cos(observation.angle + self.mean_mat[2].item()) + self.mean_mat[0].item()
+            lm_y = observation.dist * math.sin(observation.angle + self.mean_mat[2].item()) + self.mean_mat[1].item()
             lm_loc = numpy.matrix([lm_x, lm_y]).transpose()
             self.mean_mat = numpy.concatenate((self.mean_mat, lm_loc), 0)
 
             top_right = numpy.zeros([self.cov_mat.shape[0], 2], numpy.int16)
             left_bottom = top_right.transpose()
             top = numpy.concatenate((self.cov_mat, top_right), 1)
-            bottom = numpy.concatenate((left_bottom, observation.cov), 1)
+            bottom = numpy.concatenate((left_bottom, camera_cov), 1)
             self.cov_mat = numpy.concatenate((top, bottom), 0)
 
             self.landmarks[observation.name] = len(self.landmarks)
+        # Update model when seeing an integrated landmark.
         else:
             landmark_idx = self.landmarks[observation.name]
             estimated_lm_loc = self.mean_mat[3 + 2 * landmark_idx: 3 + 2 * landmark_idx + 2]
-            # cov_r_lm = self.cov_mat[0: 3, 3 + 2 * landmark_idx: 3 + 2 * landmark_idx + 2]
-            # cov_lm_r = self.cov_mat[3 + 2 * landmark_idx: 3 + 2 * landmark_idx + 2, 0: 3]
-            # lm_cov = self.cov_mat[3 + landmark_idx * 2: 3 + landmark_idx * 2 + 2,
-            # 3 + landmark_idx * 2: 3 + landmark_idx * 2 + 2]
 
             estimated_lm_r_delta = estimated_lm_loc - self.mean_mat[0 : 2]  # Predicted [dx, dy] between robot and lm.
             # q_val is a helper variable.
@@ -102,7 +86,7 @@ class EKFSLAM:
             observe_jacobian = numpy.dot(low_jacobian, f2_mat)  # observe_jacobian is of size 2 * (3 + 2N)
 
             # s_mat is a helper matrix.
-            s_mat = numpy.dot(numpy.dot(observe_jacobian, self.cov_mat), observe_jacobian.transpose()) + self.camera_cov
+            s_mat = numpy.dot(numpy.dot(observe_jacobian, self.cov_mat), observe_jacobian.transpose()) + camera_cov
             self.gain = numpy.dot(numpy.dot(self.cov_mat, observe_jacobian.transpose()), numpy.linalg.inv(s_mat))
 
             observation_reading = numpy.matrix([observation.dist, observation.angle]).transpose()

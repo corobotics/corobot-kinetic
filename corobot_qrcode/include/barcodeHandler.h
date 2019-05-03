@@ -5,6 +5,7 @@
 #include <ros/ros.h>
 #include <corobot_common/Pose.h>
 #include "corobot_common/Goal.h"
+#include <corobot_common/Target.h>
 
 #include "CSVReader.h"
 
@@ -23,17 +24,19 @@ public:
 	ros::Publisher qrCodeCountPublisher;
 	ros::Publisher barcodeLocPublisher;
     ros::Publisher publisher;
+    ros::Publisher barcodeMeasurePublisher;
     Pt point[4];
     int lengthPixelL, lengthPixelR;
     float distanceL, distanceR, squareDistanceL, squareDistanceR, angleR, angleL, angleAvg, distanceAvg, offsetDistance, barcodeXavg;
     float cbx, cby, cbtheta, bcx, bcy, bctheta, alpha, gamma;
     float barcodeX, barcodeY;
-    std::string barcodeOrientation, device_name;
+    std::string barcodeOrientation, device_name, barcodeName;
     CSVReader csvreader;
     corobot_common::Pose msg;
 
 	//std::vector<corobot_common::Pose> qrCodeList;
 	corobot_common::Pose seenQRPose;
+	corobot_common::Target landmarkInfo;
     
     BarcodeHandler(ros::Publisher & chatter_pub,std::string dev,std::string csvfile);
     void image_callback(zbar::Image & image);

@@ -12,6 +12,7 @@ public:
     void init(std::string filename);
     void close();
     void readFile();
+    std::string getName(std::string url);
     std::string getX(std::string url);
     std::string getY(std::string url);
     std::string getOrientation(std::string url);

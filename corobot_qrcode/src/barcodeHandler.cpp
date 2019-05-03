@@ -37,6 +37,7 @@ void BarcodeHandler::image_callback(Image &image) {
         istringstream(csvreader.getX(symbol->get_data())) >> barcodeX;
         istringstream(csvreader.getY(symbol->get_data())) >> barcodeY;
         barcodeOrientation = csvreader.getOrientation(symbol->get_data());
+        barcodeName = csvreader.getName(symbol -> get_data());
 
 	// publish barcode location
 	corobot_common::Pose barcodeLoc;
@@ -80,18 +81,18 @@ void BarcodeHandler::image_callback(Image &image) {
         cby = sqrt((distanceAvg * distanceAvg) - (offsetDistance * offsetDistance));
         cbtheta = angleAvg;
 
-        corobot_common Target landmarkInfo;
+        landmarkInfo.name = barcodeName;
         landmarkInfo.dist = distanceAvg;
         landmarkInfo.angle = angleAvg;
         if (isLeft(device_name))
         {
-            landmarkInfo.camera_id = 0
+            landmarkInfo.camera_id = 0;
         }
         else
         {
-            landmarkInfo.camera_id = 1
+            landmarkInfo.camera_id = 1;
         }
-        barcodeMeasurePublisher.publish(landmarkInfo)
+        // barcodeMeasurePublisher.publish(landmarkInfo);
 
         ROS_INFO_STREAM(" ____---CBTHETA!:--- "<<cbtheta);
 	alpha = acos(offsetDistance / distanceAvg);
@@ -254,6 +255,7 @@ bool BarcodeHandler::checkIfNewQR(corobot_common::Pose qrPose){
 	else
 		ss << "R" << ++qrCount;
 	topicMsg.name = ss.str(); qrCodeCountPublisher.publish(topicMsg);
+    barcodeMeasurePublisher.publish(landmarkInfo);
 
     
 	return true;
